@@ -1,0 +1,33 @@
+# Rider Service - Rider profile and ride history management
+FROM maven:3.9.6-eclipse-temurin-21 AS builder
+
+WORKDIR /app/rider-service
+
+COPY backend/rider-service/pom.xml ./
+COPY backend/shared/pom.xml ../shared/
+RUN mvn dependency:go-offline -B -f pom.xml
+
+COPY backend/rider-service/src ./src
+COPY backend/shared ../shared
+
+RUN mvn clean package -DskipTests -q
+
+FROM eclipse-temurin:21.0.2_13-jre-jammy
+
+WORKDIR /app
+
+RUN useradd -m -u 1000 appuser
+
+COPY --from=builder /app/rider-service/target/*.jar app.jar
+RUN chown -R appuser:appuser /app
+
+EXPOSE 8080
+
+USER appuser
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:8080/actuator/health/liveness || exit 1
+
+ENV JAVA_OPTS="-XX:+UseG1GC -XX:MaxGCPauseMillis=200"
+
+ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -Xmx512m -jar /app/app.jar"]

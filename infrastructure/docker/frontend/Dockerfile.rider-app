@@ -1,0 +1,62 @@
+# Rider App - Vite + React with TypeScript
+# Multi-stage build for optimized production image
+
+FROM node:20.11.0-alpine AS dependencies
+
+WORKDIR /app
+
+# Copy package files
+COPY frontend/apps/rider-app/package.json frontend/apps/rider-app/package-lock.json* ./
+COPY frontend/shared/package.json ../shared/package.json 2>/dev/null || true
+
+# Install dependencies
+RUN npm ci --legacy-peer-deps
+
+# Build stage
+FROM node:20.11.0-alpine AS builder
+
+WORKDIR /app
+
+# Copy dependencies from previous stage
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY --from=dependencies /app/../shared ../shared 2>/dev/null || true
+
+# Copy source code
+COPY frontend/apps/rider-app .
+
+# Build with Vite
+RUN npm run build
+
+# Runtime stage - serve with minimal nginx
+FROM nginx:1.25.3-alpine
+
+WORKDIR /usr/share/nginx/html
+
+# Remove default nginx config
+RUN rm -rf ./*
+
+# Copy built assets
+COPY --from=builder /app/dist .
+
+# Copy custom nginx configuration
+COPY infrastructure/docker/frontend/nginx.conf /etc/nginx/nginx.conf
+
+# Create non-root user
+RUN addgroup -g 1000 appuser && \
+    adduser -u 1000 -G appuser -s /sbin/nologin -D appuser && \
+    chown -R appuser:appuser /usr/share/nginx/html && \
+    chown -R appuser:appuser /var/cache/nginx && \
+    chown -R appuser:appuser /var/log/nginx && \
+    touch /var/run/nginx.pid && \
+    chown -R appuser:appuser /var/run/nginx.pid
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost:80/ || exit 1
+
+EXPOSE 80
+
+USER appuser
+
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]

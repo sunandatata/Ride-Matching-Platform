@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: driver-service
+
+  # JPA/Hibernate Configuration
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        format_sql: true
+    show-sql: false
+
+  # DataSource Configuration (H2 in-memory for testing)
+  datasource:
+    url: jdbc:h2:mem:testdb
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+
+  # Redis Configuration (disabled for tests with H2)
+  redis:
+    host: localhost
+    port: 6379
+
+  # Flyway Configuration
+  flyway:
+    enabled: false
+
+server:
+  port: 0
+
+logging:
+  level:
+    root: WARN
+    com.rideshare: DEBUG

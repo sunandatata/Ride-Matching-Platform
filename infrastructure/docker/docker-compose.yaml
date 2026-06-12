@@ -1,0 +1,456 @@
+version: '3.9'
+
+# Docker Compose for local development
+# Includes all backend services, databases, and message queues
+# Usage: docker-compose up -d
+
+services:
+  # ============================================
+  # DATABASE LAYER
+  # ============================================
+
+  postgresql:
+    image: postgres:15.6-alpine
+    container_name: rideshare-postgres
+    environment:
+      POSTGRES_DB: rideshare
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_local_dev
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/scripts/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rideshare-network
+    labels:
+      service: database
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: rideshare-redis
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rideshare-network
+    labels:
+      service: cache
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: rideshare-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - rideshare-network
+    labels:
+      service: message-queue
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: rideshare-kafka
+    depends_on:
+      zookeeper:
+        condition: service_started
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: kafka-broker-api-versions.sh --bootstrap-server localhost:9092
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rideshare-network
+    labels:
+      service: message-queue
+
+  # ============================================
+  # BACKEND MICROSERVICES
+  # ============================================
+
+  auth-service:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/backend/Dockerfile.auth
+    container_name: auth-service
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgresql:5432/rideshare
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres_local_dev
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: 10
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_JPA_SHOW_SQL: "false"
+      LOGGING_LEVEL_ROOT: INFO
+      LOGGING_LEVEL_COM_RIDESHARE: DEBUG
+      SERVER_PORT: 8080
+    ports:
+      - "8001:8080"
+    networks:
+      - rideshare-network
+    labels:
+      service: microservice
+      component: auth
+
+  rider-service:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/backend/Dockerfile.rider
+    container_name: rider-service
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgresql:5432/rideshare
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres_local_dev
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      AUTH_SERVICE_URL: http://auth-service:8080
+      LOGGING_LEVEL_ROOT: INFO
+      LOGGING_LEVEL_COM_RIDESHARE: DEBUG
+      SERVER_PORT: 8080
+    ports:
+      - "8002:8080"
+    networks:
+      - rideshare-network
+    labels:
+      service: microservice
+      component: rider
+
+  driver-service:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/backend/Dockerfile.driver
+    container_name: driver-service
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgresql:5432/rideshare
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres_local_dev
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      AUTH_SERVICE_URL: http://auth-service:8080
+      LOGGING_LEVEL_ROOT: INFO
+      LOGGING_LEVEL_COM_RIDESHARE: DEBUG
+      SERVER_PORT: 8080
+    ports:
+      - "8003:8080"
+    networks:
+      - rideshare-network
+    labels:
+      service: microservice
+      component: driver
+
+  ride-service:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/backend/Dockerfile.ride
+    container_name: ride-service
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgresql:5432/rideshare
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres_local_dev
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      LOCATION_SERVICE_URL: http://location-service:8080
+      MATCHING_ENGINE_URL: http://matching-engine:8080
+      LOGGING_LEVEL_ROOT: INFO
+      LOGGING_LEVEL_COM_RIDESHARE: DEBUG
+      SERVER_PORT: 8080
+    ports:
+      - "8004:8080"
+    networks:
+      - rideshare-network
+    labels:
+      service: microservice
+      component: ride
+
+  location-service:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/backend/Dockerfile.location
+    container_name: location-service
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      LOCATION_INGESTION_BATCH_SIZE: 1000
+      LOGGING_LEVEL_ROOT: INFO
+      LOGGING_LEVEL_COM_RIDESHARE: DEBUG
+      SERVER_PORT: 8080
+    ports:
+      - "8005:8080"
+    networks:
+      - rideshare-network
+    labels:
+      service: microservice
+      component: location
+
+  matching-engine:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/backend/Dockerfile.matching
+    container_name: matching-engine
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      location-service:
+        condition: service_started
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgresql:5432/rideshare
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres_local_dev
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      LOCATION_SERVICE_URL: http://location-service:8080
+      MATCHING_ALGORITHM_TIMEOUT_MS: 200
+      MATCHING_MAX_DRIVER_CANDIDATES: 50
+      LOGGING_LEVEL_ROOT: INFO
+      LOGGING_LEVEL_COM_RIDESHARE: DEBUG
+      SERVER_PORT: 8080
+    ports:
+      - "8006:8080"
+    networks:
+      - rideshare-network
+    labels:
+      service: microservice
+      component: matching
+
+  eta-service:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/backend/Dockerfile.eta
+    container_name: eta-service
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      ROUTING_API_TIMEOUT_MS: 5000
+      ETA_CACHE_TTL_SECONDS: 300
+      LOGGING_LEVEL_ROOT: INFO
+      LOGGING_LEVEL_COM_RIDESHARE: DEBUG
+      SERVER_PORT: 8080
+    ports:
+      - "8007:8080"
+    networks:
+      - rideshare-network
+    labels:
+      service: microservice
+      component: eta
+
+  notification-service:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/backend/Dockerfile.notification
+    container_name: notification-service
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgresql:5432/rideshare
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres_local_dev
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      WEBSOCKET_IDLE_TIMEOUT_MS: 300000
+      LOGGING_LEVEL_ROOT: INFO
+      LOGGING_LEVEL_COM_RIDESHARE: DEBUG
+      SERVER_PORT: 8080
+    ports:
+      - "8008:8080"
+    networks:
+      - rideshare-network
+    labels:
+      service: microservice
+      component: notification
+
+  # ============================================
+  # FRONTEND APPLICATIONS
+  # ============================================
+
+  rider-app:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/frontend/Dockerfile.rider-app
+    container_name: rider-app
+    ports:
+      - "3001:80"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000/api
+      VITE_WS_URL: ws://localhost:8000/ws
+    depends_on:
+      - api-gateway
+    networks:
+      - rideshare-network
+    labels:
+      service: frontend
+      component: rider
+
+  driver-app:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/frontend/Dockerfile.driver-app
+    container_name: driver-app
+    ports:
+      - "3002:80"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000/api
+      VITE_WS_URL: ws://localhost:8000/ws
+    depends_on:
+      - api-gateway
+    networks:
+      - rideshare-network
+    labels:
+      service: frontend
+      component: driver
+
+  admin-app:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/frontend/Dockerfile.admin-app
+    container_name: admin-app
+    ports:
+      - "3003:80"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000/api
+    depends_on:
+      - api-gateway
+    networks:
+      - rideshare-network
+    labels:
+      service: frontend
+      component: admin
+
+  # ============================================
+  # API GATEWAY / LOAD BALANCER
+  # ============================================
+
+  api-gateway:
+    image: nginx:1.25.3-alpine
+    container_name: api-gateway
+    ports:
+      - "8000:80"
+    volumes:
+      - ./infrastructure/docker/api-gateway.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - auth-service
+      - rider-service
+      - driver-service
+      - ride-service
+      - location-service
+      - matching-engine
+      - eta-service
+      - notification-service
+    networks:
+      - rideshare-network
+    labels:
+      service: gateway
+
+  # ============================================
+  # MONITORING & OBSERVABILITY
+  # ============================================
+
+  prometheus:
+    image: prom/prometheus:v2.48.1
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infrastructure/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infrastructure/monitoring/prometheus/rules.yaml:/etc/prometheus/rules.yaml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+    networks:
+      - rideshare-network
+    labels:
+      service: monitoring
+
+  grafana:
+    image: grafana/grafana:10.2.2
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_USER: admin
+      GF_INSTALL_PLUGINS: "redis-datasource"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infrastructure/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    networks:
+      - rideshare-network
+    labels:
+      service: monitoring
+
+networks:
+  rideshare-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  kafka_data:
+  prometheus_data:
+  grafana_data:

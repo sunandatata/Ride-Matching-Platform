@@ -1,0 +1,194 @@
+groups:
+  - name: ride-sharing-alerts
+    interval: 30s
+    rules:
+      # Matching Engine Alerts
+      - alert: MatchingEngineLatencyHigh
+        expr: histogram_quantile(0.95, rate(matching_engine_latency_ms_bucket[5m])) > 200
+        for: 5m
+        labels:
+          severity: warning
+          service: matching-engine
+        annotations:
+          summary: "Matching engine P95 latency exceeds 200ms"
+          description: "Service: {{ $labels.instance }}, Current: {{ $value }}ms"
+
+      - alert: MatchingEngineErrorRateHigh
+        expr: rate(matching_engine_errors_total[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          service: matching-engine
+        annotations:
+          summary: "Matching engine error rate > 1%"
+          description: "Service: {{ $labels.instance }}, Current: {{ $value }}"
+
+      # Location Service Alerts
+      - alert: LocationServiceThroughputLow
+        expr: rate(location_updates_total[1m]) < 80000
+        for: 10m
+        labels:
+          severity: warning
+          service: location-service
+        annotations:
+          summary: "Location service throughput below 80k/sec"
+          description: "Current: {{ $value }} updates/sec"
+
+      - alert: LocationServiceLatencyHigh
+        expr: histogram_quantile(0.99, rate(location_update_latency_ms_bucket[5m])) > 500
+        for: 5m
+        labels:
+          severity: warning
+          service: location-service
+        annotations:
+          summary: "Location service P99 latency > 500ms"
+          description: "Current: {{ $value }}ms"
+
+      # Database Alerts
+      - alert: PostgreSQLReplicationLag
+        expr: pg_replication_lag_seconds > 30
+        for: 5m
+        labels:
+          severity: critical
+          service: postgresql
+        annotations:
+          summary: "PostgreSQL replication lag exceeds 30s"
+          description: "Instance: {{ $labels.instance }}, Lag: {{ $value }}s"
+
+      - alert: PostgreSQLConnectionPoolExhausted
+        expr: pg_stat_activity_count > 90
+        for: 5m
+        labels:
+          severity: warning
+          service: postgresql
+        annotations:
+          summary: "PostgreSQL connection pool usage > 90%"
+          description: "Instance: {{ $labels.instance }}, Connections: {{ $value }}"
+
+      - alert: PostgreSQLWALLagHigh
+        expr: pg_wal_lsn_bytes - pg_wal_lsn_receive_bytes > 1000000
+        for: 10m
+        labels:
+          severity: warning
+          service: postgresql
+        annotations:
+          summary: "PostgreSQL WAL replication lag is high"
+          description: "Instance: {{ $labels.instance }}"
+
+      # Redis Alerts
+      - alert: RedisDiskSpaceWarning
+        expr: redis_used_memory_bytes / redis_memory_limit_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          service: redis
+        annotations:
+          summary: "Redis memory usage > 90%"
+          description: "Instance: {{ $labels.instance }}, Usage: {{ $value | humanizePercentage }}"
+
+      - alert: RedisDiskSpaceCritical
+        expr: redis_used_memory_bytes / redis_memory_limit_bytes > 0.95
+        for: 2m
+        labels:
+          severity: critical
+          service: redis
+        annotations:
+          summary: "Redis memory usage > 95% (CRITICAL)"
+          description: "Instance: {{ $labels.instance }}"
+
+      # Kafka Alerts
+      - alert: KafkaBrokerDown
+        expr: up{job="kafka"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: kafka
+        annotations:
+          summary: "Kafka broker is down"
+          description: "Broker: {{ $labels.instance }}"
+
+      - alert: KafkaUnderReplicatedPartitions
+        expr: kafka_cluster_underreplicatedpartitions > 0
+        for: 10m
+        labels:
+          severity: warning
+          service: kafka
+        annotations:
+          summary: "Kafka has under-replicated partitions"
+          description: "Count: {{ $value }}"
+
+      # Service Availability Alerts
+      - alert: ServicePodCrashLooping
+        expr: rate(kube_pod_container_status_restarts_total[15m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Pod {{ $labels.pod }} is crash looping"
+          description: "Namespace: {{ $labels.namespace }}, Restarts/min: {{ $value }}"
+
+      - alert: ServiceHighMemoryUsage
+        expr: container_memory_usage_bytes{pod=~".*-service"} / container_spec_memory_limit_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Service {{ $labels.pod }} memory usage > 90%"
+          description: "Current: {{ $value | humanizePercentage }}"
+
+      - alert: ServiceHighCPUUsage
+        expr: rate(container_cpu_usage_seconds_total{pod=~".*-service"}[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Service {{ $labels.pod }} CPU usage > 80%"
+          description: "Current: {{ $value | humanizePercentage }}"
+
+      # Ingress/Gateway Alerts
+      - alert: HighHTTP5xxErrorRate
+        expr: rate(nginx_ingress_controller_requests{status=~"5.."}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High 5xx error rate (>5%)"
+          description: "Path: {{ $labels.path }}, Rate: {{ $value | humanizePercentage }}"
+
+      - alert: HighHTTP4xxErrorRate
+        expr: rate(nginx_ingress_controller_requests{status=~"4.."}[5m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High 4xx error rate (>10%)"
+          description: "Path: {{ $labels.path }}, Rate: {{ $value | humanizePercentage }}"
+
+      # Node/Cluster Alerts
+      - alert: NodeMemoryPressure
+        expr: kube_node_status_condition{condition="MemoryPressure",status="true"} == 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node {{ $labels.node }} has memory pressure"
+          description: "Immediate action required to prevent evictions"
+
+      - alert: NodeDiskPressure
+        expr: kube_node_status_condition{condition="DiskPressure",status="true"} == 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node {{ $labels.node }} has disk pressure"
+          description: "Immediate action required"
+
+      # PVC Alerts
+      - alert: PersistentVolumeFillingUp
+        expr: (kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PVC {{ $labels.persistentvolumeclaim }} > 85% full"
+          description: "Namespace: {{ $labels.namespace }}"

@@ -1,0 +1,62 @@
+spring:
+  # DataSource configuration (production)
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 50
+      minimum-idle: 10
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  # Redis configuration (production - cluster)
+  redis:
+    host: ${REDIS_HOST}
+    port: ${REDIS_PORT}
+    password: ${REDIS_PASSWORD}
+    timeout: 5000ms
+    lettuce:
+      pool:
+        max-active: 50
+        max-idle: 20
+        min-idle: 10
+      shutdown-timeout: 2000ms
+
+  # Kafka configuration (production)
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS}
+    producer:
+      acks: 1
+      retries: 3
+      batch-size: 32768
+      linger-ms: 10
+      compression-type: snappy
+
+server:
+  port: 8082
+  shutdown: graceful
+  tomcat:
+    threads:
+      max: 400
+      min-spare: 20
+
+logging:
+  level:
+    root: WARN
+    com.rideshare.location: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} %-5level %logger{36} - %msg%n"
+
+location:
+  batch:
+    size: 500
+    window:
+      ms: 100
+
+management:
+  metrics:
+    export:
+      prometheus:
+        enabled: true

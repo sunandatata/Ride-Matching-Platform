@@ -1,0 +1,148 @@
+name: Deploy to Dev Cluster
+
+on:
+  push:
+    branches: [ develop ]
+  workflow_run:
+    workflows: ["Build & Push Docker Images"]
+    branches: [ develop ]
+    types: [completed]
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Dev Kubernetes Cluster
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.workflow_run.conclusion == 'success'
+    environment: dev
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Update kubeconfig
+      run: |
+        aws eks update-kubeconfig \
+          --name rideshare-dev-cluster \
+          --region us-east-1
+
+    - name: Create namespaces
+      run: |
+        kubectl apply -f infrastructure/kubernetes/namespaces/namespaces.yaml
+
+    - name: Create secrets
+      run: |
+        # PostgreSQL credentials
+        kubectl create secret generic postgres-credentials \
+          --from-literal=username=postgres \
+          --from-literal=password=${{ secrets.POSTGRES_DEV_PASSWORD }} \
+          --from-literal=jdbc-url=jdbc:postgresql://postgresql-primary.data-layer.svc.cluster.local:5432/rideshare \
+          -n data-layer --dry-run=client -o yaml | kubectl apply -f -
+
+        # JWT secrets
+        kubectl create secret generic jwt-secrets \
+          --from-literal=secret=${{ secrets.JWT_SECRET }} \
+          --from-literal=issuer=rideshare-platform \
+          --from-literal=algorithm=HS256 \
+          -n microservices --dry-run=client -o yaml | kubectl apply -f -
+
+        # API keys
+        kubectl create secret generic api-keys \
+          --from-literal=routing-api-key=${{ secrets.ROUTING_API_KEY }} \
+          --from-literal=payment-processor-key=${{ secrets.PAYMENT_PROCESSOR_KEY }} \
+          --from-literal=notification-service-key=${{ secrets.NOTIFICATION_SERVICE_KEY }} \
+          -n microservices --dry-run=client -o yaml | kubectl apply -f -
+
+    - name: Apply storage classes
+      run: |
+        kubectl apply -f infrastructure/kubernetes/storage/storage-class.yaml
+
+    - name: Deploy data layer (PostgreSQL, Redis, Kafka)
+      run: |
+        kubectl apply -f infrastructure/kubernetes/data/postgresql-statefulset.yaml
+        kubectl apply -f infrastructure/kubernetes/data/redis-cluster.yaml
+        kubectl apply -f infrastructure/kubernetes/data/kafka-cluster.yaml
+
+        # Wait for data layer to be ready
+        kubectl wait --for=condition=ready pod \
+          -l app=postgresql -n data-layer \
+          --timeout=300s || true
+
+    - name: Deploy microservices
+      run: |
+        # Apply all service manifests
+        kubectl apply -f infrastructure/kubernetes/services/
+
+        # Verify deployments
+        kubectl rollout status deployment/auth-service \
+          -n microservices --timeout=5m
+        kubectl rollout status deployment/rider-service \
+          -n microservices --timeout=5m
+
+    - name: Deploy monitoring stack
+      run: |
+        kubectl apply -f infrastructure/monitoring/prometheus/
+
+    - name: Verify deployment
+      run: |
+        echo "Deployment verification:"
+        kubectl get deployments -n microservices
+        kubectl get services -n microservices
+        kubectl get pods -n data-layer
+        kubectl get pods -n monitoring
+
+    - name: Run smoke tests
+      run: |
+        # Wait for services to be ready
+        kubectl wait --for=condition=ready pod \
+          -l app=auth-service -n microservices \
+          --timeout=300s
+
+        # Get service endpoints
+        AUTH_SERVICE=$(kubectl get svc auth-service -n microservices -o jsonpath='{.spec.clusterIP}')
+
+        # Basic health check
+        kubectl run smoke-test --image=curlimages/curl --rm -i --restart=Never -- \
+          curl -f http://auth-service.microservices.svc.cluster.local:8080/actuator/health
+
+    - name: Post-deployment notification
+      if: always()
+      uses: slackapi/slack-github-action@v1.24.0
+      with:
+        payload: |
+          {
+            "text": "Dev deployment ${{ job.status }}",
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*Dev Deployment* ${{ job.status }}\n${{ github.repository }} - Branch: ${{ github.ref_name }}"
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Commit:*\n<${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Author:*\n${{ github.actor }}"
+                  }
+                ]
+              }
+            ]
+          }
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK

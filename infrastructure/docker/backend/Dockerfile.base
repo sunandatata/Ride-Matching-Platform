@@ -1,0 +1,45 @@
+# Base multi-stage builder for Java microservices
+# This serves as a template for all backend services
+# Build stage: Compile and package the application
+FROM maven:3.9.6-eclipse-temurin-21 AS builder
+
+WORKDIR /app
+
+# Copy pom.xml and download dependencies (cacheable layer)
+COPY pom.xml ./
+RUN mvn dependency:go-offline -B
+
+# Copy source code
+COPY src ./src
+
+# Build the application
+RUN mvn clean package -DskipTests -q
+
+# Runtime stage: Minimal JRE with just the application JAR
+FROM eclipse-temurin:21.0.2_13-jre-jammy
+
+WORKDIR /app
+
+# Create non-root user for security
+RUN useradd -m -u 1000 appuser
+
+# Copy the built JAR from builder stage
+COPY --from=builder /app/target/*.jar app.jar
+
+# Set ownership to non-root user
+RUN chown -R appuser:appuser /app
+
+# Expose default port for microservices
+EXPOSE 8080
+
+# Switch to non-root user
+USER appuser
+
+# Health check for container orchestration
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:8080/actuator/health/liveness || exit 1
+
+# JVM performance tuning flags
+ENV JAVA_OPTS="-XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+ParallelRefProcEnabled -Dcom.sun.management.jmxremote.rmi.port=9010 -Dcom.sun.management.jmxremote.port=9010 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false"
+
+ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -Xmx512m -XX:+PrintFlagsFinal -jar /app/app.jar"]

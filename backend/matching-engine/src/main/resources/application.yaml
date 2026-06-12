@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: matching-engine
+    version: 1.0.0
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: matching-engine
+      auto-offset-reset: earliest
+
+server:
+  port: 8084
+  servlet:
+    context-path: /
+
+logging:
+  level:
+    root: INFO
+    com.rideshare.matching: DEBUG
+    org.springframework.kafka: INFO
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+# Matching engine configuration
+matching:
+  timeout-ms: 200
+  search-radius-km: 5.0
+  max-candidates: 10

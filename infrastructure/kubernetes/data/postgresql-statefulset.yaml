@@ -1,0 +1,233 @@
+---
+# PostgreSQL StatefulSet with replication (primary + replicas)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgresql-config
+  namespace: data-layer
+data:
+  postgresql.conf: |
+    # Replication settings
+    wal_level = replica
+    max_wal_senders = 10
+    max_replication_slots = 10
+    hot_standby = on
+    hot_standby_feedback = on
+
+    # Performance tuning
+    shared_buffers = 256MB
+    effective_cache_size = 1GB
+    maintenance_work_mem = 64MB
+    checkpoint_completion_target = 0.9
+    wal_buffers = 16MB
+    default_statistics_target = 100
+    random_page_cost = 1.1
+    effective_io_concurrency = 200
+    work_mem = 32MB
+    min_wal_size = 1GB
+    max_wal_size = 4GB
+    max_worker_processes = 4
+    max_parallel_workers_per_gather = 2
+    max_parallel_workers = 4
+
+    # Logging
+    log_statement = 'all'
+    log_duration = off
+    log_min_duration_statement = 1000
+    log_connections = on
+    log_disconnections = on
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgresql-cluster
+  namespace: data-layer
+  labels:
+    app: postgresql
+spec:
+  clusterIP: None  # Headless service for StatefulSet
+  selector:
+    app: postgresql
+  ports:
+  - port: 5432
+    targetPort: 5432
+    name: postgresql
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgresql-primary
+  namespace: data-layer
+  labels:
+    app: postgresql
+    role: primary
+spec:
+  type: ClusterIP
+  selector:
+    app: postgresql
+    statefulset.kubernetes.io/pod-name: postgresql-0
+  ports:
+  - port: 5432
+    targetPort: 5432
+    name: postgresql
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgresql
+  namespace: data-layer
+  labels:
+    app: postgresql
+spec:
+  serviceName: postgresql-cluster
+  replicas: 4  # 1 primary + 3 replicas
+  selector:
+    matchLabels:
+      app: postgresql
+  template:
+    metadata:
+      labels:
+        app: postgresql
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5432"
+    spec:
+      # Ensure replicas spread across availability zones
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - postgresql
+            topologyKey: kubernetes.io/hostname
+      securityContext:
+        fsGroup: 999  # postgres group
+      initContainers:
+      - name: init-chmod
+        image: postgres:15.6-alpine
+        command:
+        - sh
+        - -c
+        - |
+          chmod 700 /var/lib/postgresql/data || true
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+      containers:
+      - name: postgresql
+        image: postgres:15.6-alpine
+        ports:
+        - containerPort: 5432
+          name: postgresql
+        env:
+        - name: POSTGRES_DB
+          value: rideshare
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: username
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: password
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_ORDINAL
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
+        command:
+        - sh
+        - -c
+        - |
+          set -e
+          if [ "$POD_ORDINAL" = "0" ]; then
+            # Primary node
+            exec postgres -c config_file=/etc/postgresql/postgresql.conf
+          else
+            # Replica nodes
+            exec postgres -c config_file=/etc/postgresql/postgresql.conf \
+              -c primary_conninfo="host=postgresql-0.postgresql-cluster.$NAMESPACE.svc.cluster.local port=5432 user=postgres password=$POSTGRES_PASSWORD" \
+              -c standby_mode=on
+          fi
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+          limits:
+            cpu: "2000m"
+            memory: "2048Mi"
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U postgres
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U postgres
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        - name: config
+          mountPath: /etc/postgresql
+      volumes:
+      - name: config
+        configMap:
+          name: postgresql-config
+      terminationGracePeriodSeconds: 60
+
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: ebs-gp3  # Must be created in cluster
+      resources:
+        requests:
+          storage: 100Gi
+
+---
+# Pod Disruption Budget for PostgreSQL
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: postgresql-pdb
+  namespace: data-layer
+spec:
+  minAvailable: 2  # Keep primary + 1 replica available
+  selector:
+    matchLabels:
+      app: postgresql

@@ -1,0 +1,69 @@
+spring:
+  application:
+    name: ride-service-test
+  profiles:
+    active: test
+
+  # Test Database Configuration (H2)
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+
+  # JPA/Hibernate Configuration for Testing
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        jdbc:
+          batch_size: 5
+          fetch_size: 10
+    show-sql: false
+    open-in-view: false
+
+  # Flyway disabled for tests (using ddl-auto)
+  flyway:
+    enabled: false
+
+  # Kafka Configuration for Testing
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      acks: 1
+      retries: 1
+    properties:
+      linger.ms: 0
+
+  # Redis Configuration for Testing (embedded or real instance)
+  redis:
+    host: localhost
+    port: 6379
+    timeout: 2000ms
+
+# Server Configuration
+server:
+  port: 0  # Random port for test isolation
+
+# Logging Configuration for Tests
+logging:
+  level:
+    root: WARN
+    com.rideshare: DEBUG
+    org.springframework: WARN
+    org.hibernate: WARN
+
+# Management/Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics
+  endpoint:
+    health:
+      show-details: when-authorized

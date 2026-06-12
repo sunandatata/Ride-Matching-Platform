@@ -1,0 +1,50 @@
+spring:
+  application:
+    name: notification-service-test
+
+  # Kafka Configuration - Test (Embedded)
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      bootstrap-servers: localhost:9092
+      group-id: notification-service-test
+      auto-offset-reset: earliest
+      max-poll-records: 100
+
+  # Redis Configuration - Test (Embedded)
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2000
+      jedis:
+        pool:
+          max-active: 10
+          max-idle: 5
+          min-idle: 1
+
+  # Server Configuration - Test
+  server:
+    port: 8081
+    servlet:
+      context-path: /api/v1
+
+# Logging Configuration - Test
+logging:
+  level:
+    root: WARN
+    com.rideshare.notification: DEBUG
+    org.springframework.test: DEBUG
+
+# Notification Service Configuration - Test
+notification:
+  instance:
+    id: test-instance
+  websocket:
+    ping-interval-seconds: 30
+    max-message-size: 65536
+  connection:
+    ttl-seconds: 1800
+    heartbeat-timeout-seconds: 300
+  message:
+    dedup-ttl-seconds: 3600

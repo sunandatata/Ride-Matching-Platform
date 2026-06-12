@@ -1,0 +1,44 @@
+---
+# EBS Storage Class for production (AWS)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ebs-gp3
+provisioner: kubernetes.io/aws-ebs
+allowVolumeExpansion: true
+parameters:
+  type: gp3
+  iops: "3000"
+  throughput: "125"
+  encrypted: "true"
+  kms-key-id: arn:aws:kms:us-east-1:ACCOUNT_ID:key/KEY_ID
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+
+---
+# Fast SSD for metrics (Prometheus)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ebs-ssd
+provisioner: kubernetes.io/aws-ebs
+allowVolumeExpansion: true
+parameters:
+  type: io2
+  iops: "10000"
+  throughput: "250"
+  encrypted: "true"
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+
+---
+# NFS Storage Class for shared data (optional)
+# apiVersion: storage.k8s.io/v1
+# kind: StorageClass
+# metadata:
+#   name: nfs-storage
+# provisioner: nfs-subdir-external-provisioner
+# parameters:
+#   archiveOnDelete: "false"
+# reclaimPolicy: Delete
+# volumeBindingMode: Immediate

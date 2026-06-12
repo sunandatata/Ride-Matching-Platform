@@ -1,0 +1,61 @@
+spring:
+  application:
+    name: eta-service
+
+  # Server configuration
+  server:
+    port: 8080
+    servlet:
+      context-path: /
+
+  # Redis configuration (cluster in production)
+  data:
+    redis:
+      host: ${REDIS_HOST:redis-cluster.default.svc.cluster.local}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 1000ms
+      lettuce:
+        pool:
+          max-active: 20
+          max-idle: 10
+          min-idle: 5
+        shutdown-timeout: 100ms
+
+  # Jackson configuration
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+# Routing API configuration
+routing:
+  provider: ${ROUTING_PROVIDER:OSRM}
+  base-url: ${ROUTING_BASE_URL:http://osrm-service.default.svc.cluster.local:5000}
+  api-key: ${ROUTING_API_KEY:}
+
+# Logging configuration
+logging:
+  level:
+    root: WARN
+    com.rideshare.eta: INFO
+  pattern:
+    console: "%d{ISO8601} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: /var/log/eta-service/eta-service.log
+    max-size: 10MB
+    max-history: 30
+
+# Management endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    export:
+      prometheus:
+        enabled: true

@@ -1,0 +1,168 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: eta-config
+  namespace: microservices
+data:
+  ROUTING_API_TIMEOUT_MS: "5000"
+  ETA_CACHE_TTL_SECONDS: "300"
+  BATCH_SIZE: "50"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eta-service
+  namespace: microservices
+  labels:
+    app: eta-service
+    version: v1
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: eta-service
+  template:
+    metadata:
+      labels:
+        app: eta-service
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - eta-service
+              topologyKey: kubernetes.io/hostname
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+      - name: eta-service
+        image: docker.io/rideshare/eta-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: SPRING_REDIS_HOST
+          value: redis-cluster.data-layer.svc.cluster.local
+        - name: SPRING_REDIS_PORT
+          value: "6379"
+        - name: ROUTING_API_TIMEOUT_MS
+          valueFrom:
+            configMapKeyRef:
+              name: eta-config
+              key: ROUTING_API_TIMEOUT_MS
+        - name: ETA_CACHE_TTL_SECONDS
+          valueFrom:
+            configMapKeyRef:
+              name: eta-config
+              key: ETA_CACHE_TTL_SECONDS
+        - name: ROUTING_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: api-keys
+              key: routing-api-key
+        - name: LOGGING_LEVEL_COM_RIDESHARE
+          value: "INFO"
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1024Mi"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 5
+          failureThreshold: 2
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      terminationGracePeriodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eta-service
+  namespace: microservices
+  labels:
+    app: eta-service
+spec:
+  type: ClusterIP
+  selector:
+    app: eta-service
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: eta-service-pdb
+  namespace: microservices
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: eta-service
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: eta-service-hpa
+  namespace: microservices
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: eta-service
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70

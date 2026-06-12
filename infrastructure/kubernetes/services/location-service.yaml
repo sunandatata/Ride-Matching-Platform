@@ -1,0 +1,198 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: location-config
+  namespace: microservices
+data:
+  INGESTION_BATCH_SIZE: "1000"
+  LOCATION_UPDATE_INTERVAL_MS: "1000"
+  SPATIAL_INDEX_RADIUS_KM: "50"
+
+---
+# High-throughput location service with aggressive scaling
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: location-service
+  namespace: microservices
+  labels:
+    app: location-service
+    version: v1
+    tier: highThroughput
+spec:
+  replicas: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 2
+  selector:
+    matchLabels:
+      app: location-service
+  template:
+    metadata:
+      labels:
+        app: location-service
+        version: v1
+        tier: highThroughput
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      # Prefer nodes with more resources
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - location-service
+              topologyKey: kubernetes.io/hostname
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 50
+            preference:
+              matchExpressions:
+              - key: workload-type
+                operator: In
+                values:
+                - compute-optimized
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+      - name: location-service
+        image: docker.io/rideshare/location-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: SPRING_REDIS_HOST
+          value: redis-cluster.data-layer.svc.cluster.local
+        - name: SPRING_REDIS_PORT
+          value: "6379"
+        - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+          value: kafka-cluster.data-layer.svc.cluster.local:9092
+        - name: LOCATION_INGESTION_BATCH_SIZE
+          valueFrom:
+            configMapKeyRef:
+              name: location-config
+              key: INGESTION_BATCH_SIZE
+        - name: LOGGING_LEVEL_COM_RIDESHARE
+          value: "INFO"
+        # Location service is CPU-bound: higher allocation
+        resources:
+          requests:
+            cpu: "2000m"
+            memory: "1024Mi"
+          limits:
+            cpu: "4000m"
+            memory: "2048Mi"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8080
+          initialDelaySeconds: 40
+          periodSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          failureThreshold: 2
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      terminationGracePeriodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: location-service
+  namespace: microservices
+  labels:
+    app: location-service
+spec:
+  type: ClusterIP
+  selector:
+    app: location-service
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: location-service-pdb
+  namespace: microservices
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: location-service
+
+---
+# Aggressive autoscaling for high-throughput workload
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: location-service-hpa
+  namespace: microservices
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: location-service
+  minReplicas: 5
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 75
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      - type: Pods
+        value: 2
+        periodSeconds: 15
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60

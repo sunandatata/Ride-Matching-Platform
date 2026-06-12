@@ -1,0 +1,57 @@
+spring:
+  application:
+    name: eta-service
+  profiles:
+    active: dev
+
+  # Server configuration
+  server:
+    port: 8085
+    servlet:
+      context-path: /
+
+  # Redis configuration
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+
+  # Jackson configuration for JSON serialization
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+# Routing API configuration
+routing:
+  provider: OSRM
+  base-url: http://router.project-osrm.org
+  api-key: ""  # Only needed for Google Maps or HERE
+
+# Logging configuration
+logging:
+  level:
+    root: INFO
+    com.rideshare.eta: DEBUG
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+# Management endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true

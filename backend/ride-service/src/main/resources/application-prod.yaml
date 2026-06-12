@@ -1,0 +1,119 @@
+spring:
+  application:
+    name: ride-service
+  profiles:
+    active: prod
+
+  # Production Data Source Configuration
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://ride-db.c.rideshare.internal:5432/rideshare_rides}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 50
+      minimum-idle: 10
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      auto-commit: true
+      leak-detection-threshold: 60000
+
+  # JPA/Hibernate Configuration for Production
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          batch_size: 50
+          fetch_size: 100
+        order_inserts: true
+        order_updates: true
+        generate_statistics: false
+    show-sql: false
+    open-in-view: false
+
+  # Flyway Configuration
+  flyway:
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+    enabled: true
+
+  # Kafka Configuration for Production
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:kafka-broker-1:9092,kafka-broker-2:9092,kafka-broker-3:9092}
+    producer:
+      acks: all
+      retries: 5
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        linger.ms: 100
+        batch.size: 65536
+        compression.type: snappy
+    properties:
+      security.protocol: SASL_SSL
+      sasl.mechanism: PLAIN
+      sasl.jaas.config: ${KAFKA_SASL_JAAS_CONFIG:}
+
+  # Redis Configuration for Production
+  redis:
+    host: ${REDIS_HOST:redis-cache.c.rideshare.internal}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    timeout: 5000ms
+    ssl: true
+    lettuce:
+      pool:
+        max-active: 32
+        max-idle: 16
+        min-idle: 8
+      shutdown-timeout: 2000ms
+
+# Server Configuration
+server:
+  port: 8081
+  servlet:
+    context-path: /
+  compression:
+    enabled: true
+    min-response-size: 1024
+
+# Logging Configuration for Production
+logging:
+  level:
+    root: WARN
+    com.rideshare: INFO
+    org.springframework: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: /var/log/ride-service/ride-service.log
+    max-size: 100MB
+    max-history: 90
+    total-size-cap: 5GB
+
+# Management/Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+  endpoint:
+    health:
+      show-details: never
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+# Application Configuration
+app:
+  ride:
+    match-expiry-seconds: 30
+    shard-count: 8
+    payment:
+      enabled: true

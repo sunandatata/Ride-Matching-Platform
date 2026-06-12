@@ -1,0 +1,105 @@
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 80px;
+  background: rgba(15, 20, 25, 0.95);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(0, 255, 136, 0.15);
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-start;
+  padding: 8px 0 16px 0;
+  z-index: 1000;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  transition: all var(--animation-base);
+  flex: 1;
+  height: 100%;
+  position: relative;
+
+  &:hover {
+    background: rgba(0, 255, 136, 0.05);
+  }
+
+  &.active {
+    .nav-icon {
+      color: var(--color-accent-electric);
+      transform: scale(1.1);
+    }
+
+    .nav-label {
+      color: var(--color-accent-electric);
+      font-weight: 700;
+    }
+
+    &::before {
+      content: '';
+      position: absolute;
+      bottom: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 24px;
+      height: 3px;
+      background: linear-gradient(90deg, var(--color-accent-electric), var(--color-accent-cyan));
+      border-radius: 2px;
+      box-shadow: 0 0 12px rgba(0, 255, 136, 0.5);
+    }
+  }
+}
+
+.nav-icon {
+  font-size: 24px;
+  color: var(--color-medium);
+  transition: all var(--animation-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.nav-label {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--color-medium);
+  transition: all var(--animation-base);
+  white-space: nowrap;
+}
+
+/* Mobile optimization */
+@media (max-width: 640px) {
+  .bottom-nav {
+    height: 72px;
+    padding: 6px 0 12px 0;
+  }
+
+  .nav-item {
+    padding: 6px 12px;
+  }
+
+  .nav-icon {
+    font-size: 22px;
+  }
+
+  .nav-label {
+    font-size: 10px;
+  }
+}

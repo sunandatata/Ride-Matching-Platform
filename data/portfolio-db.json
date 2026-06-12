@@ -1,0 +1,411 @@
+{
+  "schema_version": 1,
+  "users": [
+    {
+      "id": "demo-admin-001",
+      "role": "admin",
+      "name": "Demo Admin",
+      "email": "admin@rideshare.com",
+      "phone": "+1234567890",
+      "password_hash": "65fd978734ac893dde79d5707bd13fbc:3e4a362861936e6f2fda6d9e7e778df49a6bef6abb6805210da9fb00b78470cd50811e048fa935940ccb1eadb6c6222b54e6b09ed560c94f59e5c9080664b1ed",
+      "verified": true,
+      "status": "active",
+      "created_at": "2026-06-09T18:55:35.082Z",
+      "updated_at": "2026-06-09T18:55:35.082Z"
+    },
+    {
+      "id": "demo-rider-001",
+      "role": "rider",
+      "name": "Demo Rider",
+      "email": "rider@rideshare.com",
+      "phone": "+1987654321",
+      "password_hash": "4b75094c96b0c82762106521b83510cf:72e8ccda49ae5f13419aecb69c9a415238f034b0c8ce6581e232f6cdc05965e2ba9b09a79e1de85fac6933b78ae09fb21a7642431b9d294b20dcf0073ed48052",
+      "verified": true,
+      "status": "active",
+      "created_at": "2026-06-09T18:55:35.125Z",
+      "updated_at": "2026-06-09T18:55:35.125Z"
+    },
+    {
+      "id": "demo-driver-001",
+      "role": "driver",
+      "name": "Demo Driver",
+      "email": "driver@rideshare.com",
+      "phone": "+1987654322",
+      "password_hash": "456694fcf42228aca43efa7d32c5383f:e2ad33a5fb03ae1bff391849b2b45da1caddce63fa26329d7ebe3512ca117ed6446881c4dd77c8d053c6f82336c30c48f313d1fa2d7e2fba66770129b591a595",
+      "verified": true,
+      "status": "active",
+      "approval_status": "approved",
+      "document_verified": true,
+      "rating": 4.8,
+      "created_at": "2026-06-09T18:55:35.165Z",
+      "updated_at": "2026-06-12T22:52:49.599Z",
+      "last_location": {
+        "latitude": 33.883451,
+        "longitude": -117.867504,
+        "timestamp": "2026-06-12T22:52:49.533Z"
+      }
+    },
+    {
+      "id": "rider-1781031366091-93859857",
+      "role": "rider",
+      "name": "Portfolio Rider 115605",
+      "email": "rider115605@example.com",
+      "phone": "+1555115605",
+      "password_hash": "7c30be33db60241cc214f8d33da68632:9888911b5de3037de76e087380674a60d97f6f434155eb9ef8d6b5df040a6bc4ed86d309f265831563364711e7ce2361f6ca0c31b54bd81853c9c44289ec7d9c",
+      "verified": true,
+      "status": "active",
+      "document_verified": false,
+      "created_at": "2026-06-09T18:56:06.091Z",
+      "updated_at": "2026-06-09T18:56:06.091Z"
+    },
+    {
+      "id": "driver-1781031366363-b6eef0f9",
+      "role": "driver",
+      "name": "Portfolio Driver 115605",
+      "email": "driver115605@example.com",
+      "phone": "+1666115605",
+      "password_hash": "2d6ca4b5612f2351b75d55b75487a987:738c318fa1942f3c1856df25633adc7603abc9dcda1cc835c91d84642c5e0e1ee12e13838b04fd3c498f6be94cd9a83b7fa77112f31e2d1f0ca227c3170fd903",
+      "verified": true,
+      "status": "active",
+      "approval_status": "approved",
+      "document_verified": true,
+      "rating": 4.9,
+      "created_at": "2026-06-09T18:56:06.363Z",
+      "updated_at": "2026-06-09T18:56:06.363Z"
+    }
+  ],
+  "vehicles": [
+    {
+      "id": "vehicle-demo-driver-001",
+      "driver_id": "demo-driver-001",
+      "license_plate": "ABC-1234",
+      "make": "Toyota",
+      "model": "Prius",
+      "year": 2022,
+      "color": "Silver",
+      "vehicle_type": "Hybrid",
+      "capacity": 4,
+      "insurance_expiry": "2026-12-31",
+      "verified": true,
+      "created_at": "2026-06-09T18:55:35.208Z",
+      "updated_at": "2026-06-09T18:55:35.208Z"
+    },
+    {
+      "id": "vehicle-1781031366436-c08a7ea9",
+      "driver_id": "driver-1781031366363-b6eef0f9",
+      "license_plate": "PF-115605",
+      "make": "Honda",
+      "model": "Civic",
+      "year": 2024,
+      "color": "Blue",
+      "vehicle_type": "Sedan",
+      "capacity": 4,
+      "insurance_expiry": "2027-12-31",
+      "verified": true,
+      "created_at": "2026-06-09T18:56:06.363Z",
+      "updated_at": "2026-06-09T18:56:06.363Z"
+    }
+  ],
+  "rides": [
+    {
+      "id": "ride-1781304101350-9fa93e9b",
+      "rider_id": "demo-rider-001",
+      "rider_name": "Demo Rider",
+      "status": "completed",
+      "lifecycle": {
+        "requested": "2026-06-12T22:41:41.350Z",
+        "driver_assigned": "2026-06-12T22:41:49.564Z",
+        "driver_accepted": "2026-06-12T22:41:49.564Z",
+        "driver_arriving": "2026-06-12T22:41:49.564Z",
+        "driver_arrived": "2026-06-12T22:42:08.186Z",
+        "trip_started": "2026-06-12T22:42:12.769Z",
+        "in_progress": "2026-06-12T22:42:12.769Z",
+        "completed": "2026-06-12T22:42:18.397Z"
+      },
+      "pickup_location": {
+        "latitude": 40.7527,
+        "longitude": -73.9772,
+        "address": "Grand Central Terminal, New York, NY"
+      },
+      "dropoff_location": {
+        "latitude": 40.758,
+        "longitude": -73.9855,
+        "address": "Times Square, New York, NY"
+      },
+      "distance": 0.91,
+      "estimated_fare": 7.63,
+      "eta_seconds": 420,
+      "created_at": "2026-06-12T22:41:41.350Z",
+      "updated_at": "2026-06-12T22:42:18.397Z",
+      "driver_id": "demo-driver-001",
+      "driver_name": "Demo Driver",
+      "driver_rating": 4.8,
+      "vehicle": "Toyota Prius (Silver)",
+      "license_plate": "ABC-1234",
+      "actual_fare": 7.63,
+      "driver_earning": 6.49,
+      "completed_at": "2026-06-12T22:42:18.397Z"
+    },
+    {
+      "id": "ride-1781122158295-c47f74a0",
+      "rider_id": "demo-rider-001",
+      "rider_name": "Demo Rider",
+      "status": "completed",
+      "lifecycle": {
+        "requested": "2026-06-10T20:09:18.295Z",
+        "driver_assigned": "2026-06-10T20:09:25.336Z",
+        "driver_accepted": "2026-06-10T20:09:25.336Z",
+        "driver_arriving": "2026-06-10T20:09:25.336Z",
+        "driver_arrived": "2026-06-10T20:09:29.024Z",
+        "trip_started": "2026-06-10T20:09:29.704Z",
+        "in_progress": "2026-06-10T20:09:29.704Z",
+        "completed": "2026-06-10T20:09:30.543Z"
+      },
+      "pickup_location": {
+        "latitude": 40.81696,
+        "longitude": -73.89328,
+        "address": "jn"
+      },
+      "dropoff_location": {
+        "latitude": 40.86216,
+        "longitude": -73.87278,
+        "address": "jn"
+      },
+      "distance": 5.31,
+      "estimated_fare": 21.2,
+      "eta_seconds": 1500,
+      "created_at": "2026-06-10T20:09:18.295Z",
+      "updated_at": "2026-06-10T20:09:30.543Z",
+      "driver_id": "demo-driver-001",
+      "driver_name": "Demo Driver",
+      "driver_rating": 4.8,
+      "vehicle": "Toyota Prius (Silver)",
+      "license_plate": "ABC-1234",
+      "actual_fare": 21.2,
+      "driver_earning": 18.02,
+      "completed_at": "2026-06-10T20:09:30.543Z"
+    },
+    {
+      "id": "ride-1781122069628-5a579a76",
+      "rider_id": "demo-rider-001",
+      "rider_name": "Demo Rider",
+      "status": "completed",
+      "lifecycle": {
+        "requested": "2026-06-10T20:07:49.627Z",
+        "driver_assigned": "2026-06-10T20:07:55.903Z",
+        "driver_accepted": "2026-06-10T20:07:55.903Z",
+        "driver_arriving": "2026-06-10T20:07:55.903Z",
+        "driver_arrived": "2026-06-10T20:08:01.071Z",
+        "trip_started": "2026-06-10T20:08:06.353Z",
+        "in_progress": "2026-06-10T20:08:06.353Z",
+        "completed": "2026-06-10T20:08:13.326Z"
+      },
+      "pickup_location": {
+        "latitude": 40.88338,
+        "longitude": -73.82686,
+        "address": "123 Main St, Downtown"
+      },
+      "dropoff_location": {
+        "latitude": 40.86666,
+        "longitude": -73.86828,
+        "address": "456 Business Ave, Tech Park"
+      },
+      "distance": 3.95,
+      "estimated_fare": 16.82,
+      "eta_seconds": 1140,
+      "created_at": "2026-06-10T20:07:49.627Z",
+      "updated_at": "2026-06-10T20:08:13.326Z",
+      "driver_id": "demo-driver-001",
+      "driver_name": "Demo Driver",
+      "driver_rating": 4.8,
+      "vehicle": "Toyota Prius (Silver)",
+      "license_plate": "ABC-1234",
+      "actual_fare": 16.82,
+      "driver_earning": 14.3,
+      "completed_at": "2026-06-10T20:08:13.326Z"
+    },
+    {
+      "id": "ride-1781121841571-f465907c",
+      "rider_id": "demo-rider-001",
+      "rider_name": "Demo Rider",
+      "status": "completed",
+      "lifecycle": {
+        "requested": "2026-06-10T20:04:01.570Z",
+        "driver_assigned": "2026-06-10T20:04:10.801Z",
+        "driver_accepted": "2026-06-10T20:04:10.801Z",
+        "driver_arriving": "2026-06-10T20:04:10.801Z",
+        "driver_arrived": "2026-06-10T20:04:31.323Z",
+        "trip_started": "2026-06-10T20:04:41.072Z",
+        "in_progress": "2026-06-10T20:04:41.072Z",
+        "completed": "2026-06-10T20:04:50.566Z"
+      },
+      "pickup_location": {
+        "latitude": 40.88338,
+        "longitude": -73.82686,
+        "address": "123 Main St, Downtown"
+      },
+      "dropoff_location": {
+        "latitude": 40.86666,
+        "longitude": -73.86828,
+        "address": "456 Business Ave, Tech Park"
+      },
+      "distance": 3.95,
+      "estimated_fare": 16.82,
+      "eta_seconds": 1140,
+      "created_at": "2026-06-10T20:04:01.570Z",
+      "updated_at": "2026-06-10T20:05:01.345Z",
+      "driver_id": "demo-driver-001",
+      "driver_name": "Demo Driver",
+      "driver_rating": 4.8,
+      "vehicle": "Toyota Prius (Silver)",
+      "license_plate": "ABC-1234",
+      "actual_fare": 16.82,
+      "driver_earning": 14.3,
+      "completed_at": "2026-06-10T20:04:50.566Z",
+      "rating": 3,
+      "feedback": "ho"
+    },
+    {
+      "id": "ride-1781041720911-3d9a578c",
+      "rider_id": "demo-rider-001",
+      "rider_name": "Demo Rider",
+      "status": "cancelled",
+      "lifecycle": {
+        "requested": "2026-06-09T21:48:40.911Z"
+      },
+      "pickup_location": {
+        "latitude": 40.88338,
+        "longitude": -73.82686,
+        "address": "123 Main St, Downtown"
+      },
+      "dropoff_location": {
+        "latitude": 40.86666,
+        "longitude": -73.86828,
+        "address": "456 Business Ave, Tech Park"
+      },
+      "distance": 3.95,
+      "estimated_fare": 16.82,
+      "eta_seconds": 1140,
+      "created_at": "2026-06-09T21:48:40.911Z",
+      "updated_at": "2026-06-10T20:04:01.570Z",
+      "cancel_reason": "Superseded by a new request"
+    },
+    {
+      "id": "ride-1781041385784-9944f15c",
+      "rider_id": "demo-rider-001",
+      "rider_name": "Demo Rider",
+      "status": "completed",
+      "lifecycle": {
+        "requested": "2026-06-09T21:43:05.784Z",
+        "driver_assigned": "2026-06-09T21:43:05.838Z",
+        "driver_accepted": "2026-06-09T21:43:05.838Z",
+        "driver_arriving": "2026-06-09T21:43:05.838Z",
+        "driver_arrived": "2026-06-09T21:48:53.016Z",
+        "trip_started": "2026-06-09T21:48:54.604Z",
+        "in_progress": "2026-06-09T21:48:54.604Z",
+        "completed": "2026-06-09T21:49:03.375Z"
+      },
+      "pickup_location": {
+        "latitude": 40.73,
+        "longitude": -73.995,
+        "address": "Union Square"
+      },
+      "dropoff_location": {
+        "latitude": 40.758,
+        "longitude": -73.9855,
+        "address": "Times Square"
+      },
+      "distance": 3.21,
+      "estimated_fare": 14.56,
+      "eta_seconds": 960,
+      "created_at": "2026-06-09T21:43:05.784Z",
+      "updated_at": "2026-06-09T21:49:03.375Z",
+      "driver_id": "demo-driver-001",
+      "driver_name": "Demo Driver",
+      "driver_rating": 4.8,
+      "vehicle": "Toyota Prius (Silver)",
+      "license_plate": "ABC-1234",
+      "actual_fare": 14.56,
+      "driver_earning": 12.38,
+      "completed_at": "2026-06-09T21:49:03.375Z"
+    },
+    {
+      "id": "ride-1781031366574-6506d085",
+      "rider_id": "rider-1781031366091-93859857",
+      "rider_name": "Portfolio Rider 115605",
+      "status": "completed",
+      "lifecycle": {
+        "requested": "2026-06-09T18:56:06.574Z",
+        "driver_assigned": "2026-06-09T18:56:06.588Z",
+        "driver_accepted": "2026-06-09T18:56:06.588Z",
+        "driver_arriving": "2026-06-09T18:56:06.588Z",
+        "driver_arrived": "2026-06-09T18:56:06.599Z",
+        "trip_started": "2026-06-09T18:56:06.607Z",
+        "in_progress": "2026-06-09T18:56:06.607Z",
+        "completed": "2026-06-09T18:56:06.616Z"
+      },
+      "pickup_location": {
+        "latitude": 40.7128,
+        "longitude": -74.006,
+        "address": "Portfolio Pickup"
+      },
+      "dropoff_location": {
+        "latitude": 40.758,
+        "longitude": -73.9855,
+        "address": "Portfolio Dropoff"
+      },
+      "distance": 5.31,
+      "estimated_fare": 21.21,
+      "eta_seconds": 1500,
+      "created_at": "2026-06-09T18:56:06.574Z",
+      "updated_at": "2026-06-09T18:56:06.616Z",
+      "driver_id": "driver-1781031366363-b6eef0f9",
+      "driver_name": "Portfolio Driver 115605",
+      "driver_rating": 4.9,
+      "vehicle": "Honda Civic (Blue)",
+      "license_plate": "PF-115605",
+      "actual_fare": 21.21,
+      "driver_earning": 18.03,
+      "completed_at": "2026-06-09T18:56:06.616Z"
+    }
+  ],
+  "sessions": [
+    {
+      "id": "session-1781031366207-6cc6e436",
+      "user_id": "rider-1781031366091-93859857",
+      "refresh_token_hash": "824a090c3df2c29bb9db06aabf52c1bc1962939e84aec4c4d28d020ff4c44d89",
+      "expires_at": 1782240966207,
+      "created_at": "2026-06-09T18:56:06.207Z"
+    },
+    {
+      "id": "session-1781031366357-0e4533ab",
+      "user_id": "rider-1781031366091-93859857",
+      "refresh_token_hash": "1959ebc2ba38705c31f54cc0a3be16197aa2145fb8619384a7766c71cc0f2cae",
+      "expires_at": 1782240966357,
+      "created_at": "2026-06-09T18:56:06.357Z"
+    },
+    {
+      "id": "session-1781031366438-2cb43473",
+      "user_id": "driver-1781031366363-b6eef0f9",
+      "refresh_token_hash": "7f9b0d8a52dd088c92d38ca95edf4d63e0260c15a8819679564848cbacfd8fbd",
+      "expires_at": 1782240966439,
+      "created_at": "2026-06-09T18:56:06.439Z"
+    },
+    {
+      "id": "session-1781031366542-9f161502",
+      "user_id": "driver-1781031366363-b6eef0f9",
+      "refresh_token_hash": "6bb639741532443340f0920aed9e4589bec00009e15e801fdd61e4d08932c1b9",
+      "expires_at": 1782240966542,
+      "created_at": "2026-06-09T18:56:06.542Z"
+    },
+    {
+      "id": "session-1781031366727-5c057967",
+      "user_id": "demo-admin-001",
+      "refresh_token_hash": "845731f564b8093bb702733dde43180cc1a89a70aad738c93b8b98894f9f2102",
+      "expires_at": 1782240966727,
+      "created_at": "2026-06-09T18:56:06.727Z"
+    }
+  ],
+  "payment_methods": [],
+  "documents": []
+}

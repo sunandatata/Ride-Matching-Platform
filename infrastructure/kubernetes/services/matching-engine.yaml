@@ -1,0 +1,227 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: matching-config
+  namespace: microservices
+data:
+  MATCHING_ALGORITHM_TIMEOUT_MS: "200"
+  MAX_DRIVER_CANDIDATES: "50"
+  RANKING_WINDOW_SIZE: "1000"
+
+---
+# Compute-intensive matching engine service
+# Target: <200ms matching latency for 10k+ concurrent rides
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matching-engine
+  namespace: microservices
+  labels:
+    app: matching-engine
+    version: v1
+    tier: compute
+spec:
+  replicas: 7
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 2
+      maxSurge: 2
+  selector:
+    matchLabels:
+      app: matching-engine
+  template:
+    metadata:
+      labels:
+        app: matching-engine
+        version: v1
+        tier: compute
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      # Anti-affinity and node preference for compute resources
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - matching-engine
+              topologyKey: kubernetes.io/hostname
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 80
+            preference:
+              matchExpressions:
+              - key: workload-type
+                operator: In
+                values:
+                - compute-optimized
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+      - name: matching-engine
+        image: docker.io/rideshare/matching-engine:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: SPRING_DATASOURCE_URL
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: jdbc-url
+        - name: SPRING_DATASOURCE_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: username
+        - name: SPRING_DATASOURCE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: password
+        - name: SPRING_REDIS_HOST
+          value: redis-cluster.data-layer.svc.cluster.local
+        - name: SPRING_REDIS_PORT
+          value: "6379"
+        - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+          value: kafka-cluster.data-layer.svc.cluster.local:9092
+        - name: LOCATION_SERVICE_URL
+          value: "http://location-service.microservices.svc.cluster.local:8080"
+        - name: MATCHING_ALGORITHM_TIMEOUT_MS
+          valueFrom:
+            configMapKeyRef:
+              name: matching-config
+              key: MATCHING_ALGORITHM_TIMEOUT_MS
+        - name: MAX_DRIVER_CANDIDATES
+          valueFrom:
+            configMapKeyRef:
+              name: matching-config
+              key: MAX_DRIVER_CANDIDATES
+        - name: LOGGING_LEVEL_COM_RIDESHARE
+          value: "INFO"
+        # Most compute-intensive: aggressive resource allocation
+        resources:
+          requests:
+            cpu: "3000m"
+            memory: "2048Mi"
+          limits:
+            cpu: "6000m"
+            memory: "4096Mi"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8080
+          initialDelaySeconds: 50
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 8080
+          initialDelaySeconds: 40
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 2
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: cache
+          mountPath: /app/cache
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: cache
+        emptyDir: {}
+      terminationGracePeriodSeconds: 45
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: matching-engine
+  namespace: microservices
+  labels:
+    app: matching-engine
+spec:
+  type: ClusterIP
+  selector:
+    app: matching-engine
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: matching-engine-pdb
+  namespace: microservices
+spec:
+  minAvailable: 4
+  selector:
+    matchLabels:
+      app: matching-engine
+
+---
+# Autoscaling with tight thresholds for latency-sensitive workload
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: matching-engine-hpa
+  namespace: microservices
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: matching-engine
+  minReplicas: 7
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 30
+      - type: Pods
+        value: 2
+        periodSeconds: 30
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 120

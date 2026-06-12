@@ -1,0 +1,39 @@
+---
+# Microservices namespace - contains all backend and frontend services
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: microservices
+  labels:
+    name: microservices
+    managed-by: devops
+
+---
+# Data layer namespace - PostgreSQL, Redis, Kafka
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: data-layer
+  labels:
+    name: data-layer
+    managed-by: devops
+
+---
+# Monitoring namespace - Prometheus, Grafana, ELK, Jaeger
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+    managed-by: devops
+
+---
+# Ingress and networking namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ingress-nginx
+  labels:
+    name: ingress-nginx
+    managed-by: devops

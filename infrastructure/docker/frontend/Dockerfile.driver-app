@@ -1,0 +1,47 @@
+# Driver App - Vite + React with TypeScript
+FROM node:20.11.0-alpine AS dependencies
+
+WORKDIR /app
+
+COPY frontend/apps/driver-app/package.json frontend/apps/driver-app/package-lock.json* ./
+COPY frontend/shared/package.json ../shared/package.json 2>/dev/null || true
+
+RUN npm ci --legacy-peer-deps
+
+FROM node:20.11.0-alpine AS builder
+
+WORKDIR /app
+
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY --from=dependencies /app/../shared ../shared 2>/dev/null || true
+
+COPY frontend/apps/driver-app .
+
+RUN npm run build
+
+FROM nginx:1.25.3-alpine
+
+WORKDIR /usr/share/nginx/html
+
+RUN rm -rf ./*
+
+COPY --from=builder /app/dist .
+
+COPY infrastructure/docker/frontend/nginx.conf /etc/nginx/nginx.conf
+
+RUN addgroup -g 1000 appuser && \
+    adduser -u 1000 -G appuser -s /sbin/nologin -D appuser && \
+    chown -R appuser:appuser /usr/share/nginx/html && \
+    chown -R appuser:appuser /var/cache/nginx && \
+    chown -R appuser:appuser /var/log/nginx && \
+    touch /var/run/nginx.pid && \
+    chown -R appuser:appuser /var/run/nginx.pid
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost:80/ || exit 1
+
+EXPOSE 80
+
+USER appuser
+
+CMD ["nginx", "-g", "daemon off;"]
