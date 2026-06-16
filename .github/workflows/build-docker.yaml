@@ -27,15 +27,23 @@ jobs:
     if: github.event_name == 'push' || github.event.workflow_run.conclusion == 'success'
     strategy:
       matrix:
-        service:
-          - auth-service
-          - rider-service
-          - driver-service
-          - ride-service
-          - location-service
-          - matching-engine
-          - eta-service
-          - notification-service
+        include:
+          - service: auth-service
+            dockerfile: auth
+          - service: rider-service
+            dockerfile: rider
+          - service: driver-service
+            dockerfile: driver
+          - service: ride-service
+            dockerfile: ride
+          - service: location-service
+            dockerfile: location
+          - service: matching-engine
+            dockerfile: matching
+          - service: eta-service
+            dockerfile: eta
+          - service: notification-service
+            dockerfile: notification
     steps:
     - uses: actions/checkout@v4
 
@@ -64,7 +72,7 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         context: .
-        file: infrastructure/docker/backend/Dockerfile.${{ matrix.service }}
+        file: infrastructure/docker/backend/Dockerfile.${{ matrix.dockerfile }}
         push: ${{ github.event_name == 'push' }}
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}

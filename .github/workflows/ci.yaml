@@ -79,22 +79,23 @@ jobs:
       with:
         node-version: '20'
         cache: 'npm'
+        cache-dependency-path: frontend/${{ matrix.app }}/package-lock.json
 
     - name: Install dependencies
-      working-directory: frontend
+      working-directory: frontend/${{ matrix.app }}
       run: npm ci --legacy-peer-deps
 
     - name: Build ${{ matrix.app }}
-      working-directory: frontend/apps/${{ matrix.app }}
+      working-directory: frontend/${{ matrix.app }}
       run: npm run build
 
     - name: Run tests
-      working-directory: frontend/apps/${{ matrix.app }}
+      working-directory: frontend/${{ matrix.app }}
       run: npm run test:unit --if-present
       continue-on-error: true
 
     - name: Run E2E tests
-      working-directory: frontend/apps/${{ matrix.app }}
+      working-directory: frontend/${{ matrix.app }}
       run: npm run test:e2e --if-present
       continue-on-error: true
 
@@ -120,6 +121,7 @@ jobs:
         sarif_file: 'trivy-results.sarif'
 
     - name: Dependency check
+      working-directory: backend
       run: |
         mvn org.owasp:dependency-check-maven:check \
           -DaggregateDependencies=true || true
@@ -181,6 +183,7 @@ jobs:
         cache: maven
 
     - name: Run integration tests
+      working-directory: backend
       run: |
         mvn verify \
           -Dspring.datasource.url=jdbc:postgresql://localhost:5432/rideshare_test \
