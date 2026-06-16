@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
   Alert,
   Avatar,
@@ -21,10 +22,15 @@ import {
   Typography,
 } from '@mui/material'
 import {
+  Call as CallIcon,
+  CallEnd as CallEndIcon,
   AccessTime as TimeIcon,
   CheckCircle as CheckIcon,
   DirectionsCar as CarIcon,
   Flag as FlagIcon,
+  GraphicEq as SoundIcon,
+  ChatBubbleOutline as MessageIcon,
+  PhoneInTalk as PhoneIcon,
   MyLocation as MyLocationIcon,
   Navigation as NavigationIcon,
   PersonPinCircle as PickupIcon,
@@ -32,21 +38,26 @@ import {
   ReceiptLong as ReceiptIcon,
   Search as SearchIcon,
   Star as StarIcon,
+  Share as ShareIcon,
+  Close as CloseIcon,
+  LocalTaxi as TaxiIcon,
+  Timer as TimerIcon,
 } from '@mui/icons-material'
 import { useCurrentRide, useRequestRide } from '@/hooks/useRides'
 import { Location as RideLocation, Ride, RideRequest, RideStatus } from '@/types'
 import { locationSearchService } from '@/services/locationSearchService'
 
-type RideStage = 'searching' | 'matched' | 'en_route' | 'arrived' | 'trip' | 'completed'
 type MapPoint = RideLocation & { id: string; type: 'pickup' | 'dropoff' | 'driver' | 'nearby'; label: string }
 
-const timelineSteps: Array<{ key: RideStatus; label: string }> = [
-  { key: 'requested', label: 'Searching' },
-  { key: 'driver_assigned', label: 'Matched' },
-  { key: 'driver_arriving', label: 'En route' },
-  { key: 'driver_arrived', label: 'Arrived' },
-  { key: 'trip_started', label: 'In trip' },
-  { key: 'completed', label: 'Complete' },
+const timelineSteps: Array<{ key: VisualRideStage; label: string }> = [
+  { key: 'searching', label: 'Searching for drivers' },
+  { key: 'matched', label: 'Driver matched' },
+  { key: 'en_route', label: 'Driver is on the way' },
+  { key: 'arrived', label: 'Driver arrived' },
+  { key: 'trip_started', label: 'Trip started' },
+  { key: 'trip_in_progress', label: 'Trip in progress' },
+  { key: 'arriving_destination', label: 'Arriving at destination' },
+  { key: 'completed', label: 'Trip completed' },
 ]
 
 const driverProfile = {
@@ -55,6 +66,7 @@ const driverProfile = {
   vehicle: 'Toyota Camry Hybrid',
   plate: 'RIDE-4821',
   avatar: 'MC',
+  tripsCompleted: 1284,
 }
 
 const round = (value: number, places = 2) => {
@@ -92,42 +104,10 @@ const estimateRide = (pickup: RideLocation, dropoff: RideLocation) => {
   }
 }
 
-const getStage = (status?: RideStatus): RideStage => {
-  if (status === 'completed') return 'completed'
-  if (status === 'trip_started' || status === 'in_progress') return 'trip'
-  if (status === 'driver_arrived') return 'arrived'
-  if (status === 'driver_arriving') return 'en_route'
-  if (status === 'driver_assigned' || status === 'driver_accepted') return 'matched'
-  return 'searching'
-}
-
-const getTimelineProgress = (status?: RideStatus) => {
-  if (status === 'driver_accepted') status = 'driver_assigned'
-  if (status === 'in_progress') status = 'trip_started'
-  const index = timelineSteps.findIndex((step) => step.key === status)
-  if (index < 0) return status === 'cancelled' ? 0 : 12
+const getTimelineProgress = (stage: VisualRideStage) => {
+  const index = timelineSteps.findIndex((step) => step.key === stage)
+  if (index < 0) return 0
   return Math.round(((index + 1) / timelineSteps.length) * 100)
-}
-
-const interpolateLocation = (from: RideLocation, to: RideLocation, ratio: number, address: string): RideLocation => ({
-  latitude: round(from.latitude + ((to.latitude - from.latitude) * ratio), 6),
-  longitude: round(from.longitude + ((to.longitude - from.longitude) * ratio), 6),
-  address,
-})
-
-const buildDriverOrigin = (pickup: RideLocation): RideLocation => ({
-  latitude: round(pickup.latitude + 0.012, 6),
-  longitude: round(pickup.longitude - 0.016, 6),
-  address: 'Nearby driver location',
-})
-
-const getDriverLocation = (pickup: RideLocation, dropoff: RideLocation, stage: RideStage): RideLocation => {
-  const origin = buildDriverOrigin(pickup)
-  if (stage === 'en_route') return interpolateLocation(origin, pickup, 0.68, 'Driver approaching pickup')
-  if (stage === 'arrived') return { ...pickup, address: 'Driver at pickup' }
-  if (stage === 'trip') return interpolateLocation(pickup, dropoff, 0.46, 'Trip in progress')
-  if (stage === 'completed') return { ...dropoff, address: 'Trip completed' }
-  return origin
 }
 
 const getNearbyDrivers = (pickup: RideLocation): MapPoint[] => {
@@ -148,30 +128,7 @@ const getNearbyDrivers = (pickup: RideLocation): MapPoint[] => {
   }))
 }
 
-const getPointStyle = (point: RideLocation, allPoints: RideLocation[]) => {
-  const latitudes = allPoints.map((item) => item.latitude)
-  const longitudes = allPoints.map((item) => item.longitude)
-  let minLat = Math.min(...latitudes)
-  let maxLat = Math.max(...latitudes)
-  let minLon = Math.min(...longitudes)
-  let maxLon = Math.max(...longitudes)
-  const latPadding = Math.max((maxLat - minLat) * 0.28, 0.01)
-  const lonPadding = Math.max((maxLon - minLon) * 0.28, 0.01)
-  minLat -= latPadding
-  maxLat += latPadding
-  minLon -= lonPadding
-  maxLon += lonPadding
-
-  const left = ((point.longitude - minLon) / (maxLon - minLon)) * 100
-  const top = (1 - ((point.latitude - minLat) / (maxLat - minLat))) * 100
-
-  return {
-    left: `${Math.min(92, Math.max(8, left))}%`,
-    top: `${Math.min(88, Math.max(12, top))}%`,
-  }
-}
-
-const getStageCopy = (ride: Ride | null, stage: RideStage, estimate: ReturnType<typeof estimateRide>) => {
+const getStageCopy = (ride: Ride | null, stage: VisualRideStage, estimate: ReturnType<typeof estimateRide>) => {
   const eta = Math.max(1, Math.round((ride?.eta_seconds || estimate.etaSeconds) / 60))
   const remainingDistance = ride ? ride.distance : estimate.distance
 
@@ -184,13 +141,332 @@ const getStageCopy = (ride: Ride | null, stage: RideStage, estimate: ReturnType<
       return { title: `Arriving in ${Math.max(1, eta - 1)} minutes`, detail: 'Driver is on the way to pickup', metric: `${round(remainingDistance / 3, 1)} km to pickup` }
     case 'arrived':
       return { title: 'Driver Arrived', detail: 'Meet your driver at the pickup point', metric: 'Pickup highlighted' }
-    case 'trip':
+    case 'trip_started':
+      return { title: 'Trip Started', detail: 'You are in the car and heading to the destination', metric: `${Math.max(3, eta - 3)} min remaining` }
+    case 'trip_in_progress':
       return { title: `${Math.max(3, eta - 3)} minutes remaining`, detail: 'Trip is in progress', metric: `${round(Math.max(0.4, remainingDistance * 0.55), 1)} km left` }
+    case 'arriving_destination':
+      return { title: 'Arriving at Destination', detail: 'Final approach to your dropoff', metric: `${Math.max(1, eta)} min remaining` }
     case 'completed':
       return { title: 'Trip Completed', detail: 'Receipt and ride details are ready', metric: `$${(ride?.actual_fare || ride?.estimated_fare || estimate.estimatedFare).toFixed(2)}` }
     default:
       return { title: 'Ride Tracking', detail: 'Live ride updates', metric: `${eta} min` }
   }
+}
+
+type VisualRideStage =
+  | 'searching'
+  | 'matched'
+  | 'en_route'
+  | 'arrived'
+  | 'trip_started'
+  | 'trip_in_progress'
+  | 'arriving_destination'
+  | 'completed'
+
+type ToastItem = {
+  id: string
+  message: string
+  severity: 'info' | 'success'
+}
+
+type RoutePoint = {
+  latitude: number
+  longitude: number
+  address: string
+  id: string
+  type: 'origin' | 'pickup' | 'mid' | 'dropoff'
+}
+
+type MotionState = {
+  stage: VisualRideStage
+  progress: number
+  etaMinutes: number
+  distanceRemainingKm: number
+  driverMinutesAway: number
+  currentPoint: { latitude: number; longitude: number }
+  rotation: number
+  pulsePickup: boolean
+  cameraScale: number
+  statusText: string
+}
+
+const visualStages: VisualRideStage[] = [
+  'searching',
+  'matched',
+  'en_route',
+  'arrived',
+  'trip_started',
+  'trip_in_progress',
+  'arriving_destination',
+  'completed',
+]
+
+const backendStageOrder: Record<RideStatus, number> = {
+  requested: 0,
+  driver_accepted: 1,
+  driver_assigned: 1,
+  driver_arriving: 2,
+  driver_arrived: 3,
+  trip_started: 4,
+  in_progress: 5,
+  completed: 7,
+  cancelled: 0,
+}
+
+const backendVisualStage = (status?: RideStatus | null): VisualRideStage => {
+  switch (status) {
+    case 'driver_assigned':
+    case 'driver_accepted':
+      return 'matched'
+    case 'driver_arriving':
+      return 'en_route'
+    case 'driver_arrived':
+      return 'arrived'
+    case 'trip_started':
+      return 'trip_started'
+    case 'in_progress':
+      return 'trip_in_progress'
+    case 'completed':
+      return 'completed'
+    case 'requested':
+    case 'cancelled':
+    default:
+      return 'searching'
+  }
+}
+
+const stageWindowSeconds: Record<VisualRideStage, number> = {
+  searching: 6,
+  matched: 7,
+  en_route: 12,
+  arrived: 4,
+  trip_started: 4,
+  trip_in_progress: 28,
+  arriving_destination: 10,
+  completed: 1,
+}
+
+const getVisualStageFromElapsed = (elapsedSeconds: number): VisualRideStage => {
+  if (elapsedSeconds < 6) return 'searching'
+  if (elapsedSeconds < 13) return 'matched'
+  if (elapsedSeconds < 25) return 'en_route'
+  if (elapsedSeconds < 30) return 'arrived'
+  if (elapsedSeconds < 34) return 'trip_started'
+  if (elapsedSeconds < 62) return 'trip_in_progress'
+  if (elapsedSeconds < 72) return 'arriving_destination'
+  return 'completed'
+}
+
+const getVisualStage = (ride: Ride | null, now: number): VisualRideStage => {
+  if (!ride) return 'searching'
+  if (ride.status === 'cancelled') return 'searching'
+  if (ride.status === 'completed') return 'completed'
+
+  const startedAt = new Date(ride.created_at).getTime()
+  const elapsedSeconds = Number.isFinite(startedAt) ? Math.max(0, Math.floor((now - startedAt) / 1000)) : 0
+  const simulatedStage = getVisualStageFromElapsed(elapsedSeconds)
+  const backendRank = backendStageOrder[ride.status] ?? 0
+  const backendStage = backendVisualStage(ride.status)
+  const simulatedRank = visualStages.indexOf(simulatedStage)
+
+  return backendRank > simulatedRank ? backendStage : simulatedStage
+}
+
+const getStageProgress = (ride: Ride | null, now: number, stage: VisualRideStage) => {
+  if (!ride) return 0
+  const startedAt = new Date(ride.created_at).getTime()
+  const elapsedSeconds = Number.isFinite(startedAt) ? Math.max(0, Math.floor((now - startedAt) / 1000)) : 0
+  const previousStages = visualStages.slice(0, visualStages.indexOf(stage))
+  const elapsedBeforeStage = previousStages.reduce((sum, key) => sum + stageWindowSeconds[key], 0)
+  const window = Math.max(1, stageWindowSeconds[stage])
+  return Math.min(1, Math.max(0, (elapsedSeconds - elapsedBeforeStage) / window))
+}
+
+const buildRouteTrack = (pickup: RideLocation, dropoff: RideLocation): RoutePoint[] => {
+  const latitudeDelta = dropoff.latitude - pickup.latitude
+  const longitudeDelta = dropoff.longitude - pickup.longitude
+  const origin: RoutePoint = {
+    id: 'origin',
+    type: 'origin',
+    latitude: pickup.latitude + (latitudeDelta * 0.07) + 0.015,
+    longitude: pickup.longitude - 0.018,
+    address: 'Driver origin',
+  }
+  const viaOne: RoutePoint = {
+    id: 'via-1',
+    type: 'mid',
+    latitude: pickup.latitude + (latitudeDelta * 0.28) - 0.018,
+    longitude: pickup.longitude + (longitudeDelta * 0.18) + 0.013,
+    address: 'Route bend',
+  }
+  const viaTwo: RoutePoint = {
+    id: 'via-2',
+    type: 'mid',
+    latitude: pickup.latitude + (latitudeDelta * 0.66) + 0.012,
+    longitude: pickup.longitude + (longitudeDelta * 0.72) - 0.015,
+    address: 'Traffic section',
+  }
+
+  return [
+    origin,
+    { ...pickup, id: 'pickup', type: 'pickup' },
+    viaOne,
+    viaTwo,
+    { ...dropoff, id: 'dropoff', type: 'dropoff' },
+  ]
+}
+
+const pointToScreen = (point: RoutePoint, allPoints: RoutePoint[]) => {
+  const latitudes = allPoints.map((item) => item.latitude)
+  const longitudes = allPoints.map((item) => item.longitude)
+  let minLat = Math.min(...latitudes)
+  let maxLat = Math.max(...latitudes)
+  let minLon = Math.min(...longitudes)
+  let maxLon = Math.max(...longitudes)
+
+  const latPadding = Math.max((maxLat - minLat) * 0.3, 0.015)
+  const lonPadding = Math.max((maxLon - minLon) * 0.3, 0.015)
+  minLat -= latPadding
+  maxLat += latPadding
+  minLon -= lonPadding
+  maxLon += lonPadding
+
+  const x = ((point.longitude - minLon) / (maxLon - minLon)) * 100
+  const y = (1 - ((point.latitude - minLat) / (maxLat - minLat))) * 100
+
+  return {
+    left: `${Math.min(90, Math.max(8, x))}%`,
+    top: `${Math.min(88, Math.max(12, y))}%`,
+  }
+}
+
+const interpolateRoute = (points: RoutePoint[], progress: number) => {
+  const screenPoints = points.map((point) => {
+    const position = pointToScreen(point, points)
+    return {
+      x: Number.parseFloat(position.left),
+      y: Number.parseFloat(position.top),
+      point,
+    }
+  })
+
+  const segments = screenPoints.slice(1).map((entry, index) => {
+    const from = screenPoints[index]
+    const to = entry
+    const dx = to.x - from.x
+    const dy = to.y - from.y
+    const length = Math.max(0.001, Math.hypot(dx, dy))
+    return { from, to, dx, dy, length }
+  })
+
+  const totalLength = segments.reduce((sum, segment) => sum + segment.length, 0)
+  let target = totalLength * progress
+  let current = segments[0]
+  for (const segment of segments) {
+    if (target <= segment.length) {
+      current = segment
+      break
+    }
+    target -= segment.length
+    current = segment
+  }
+
+  const ratio = current.length === 0 ? 0 : Math.min(1, Math.max(0, target / current.length))
+  const x = current.from.x + (current.dx * ratio)
+  const y = current.from.y + (current.dy * ratio)
+  const angle = Math.atan2(current.dy, current.dx) * (180 / Math.PI)
+
+  return { x, y, angle, screenPoints }
+}
+
+const getMotionState = (ride: Ride | null, now: number, pickup: RideLocation, dropoff: RideLocation): MotionState => {
+  const stage = getVisualStage(ride, now)
+  const stageProgress = getStageProgress(ride, now, stage)
+  const activeRide = ride || null
+  const routeProgressRanges: Record<VisualRideStage, [number, number]> = {
+    searching: [0.07, 0.24],
+    matched: [0.24, 0.42],
+    en_route: [0.42, 0.5],
+    arrived: [0.5, 0.5],
+    trip_started: [0.5, 0.56],
+    trip_in_progress: [0.56, 0.92],
+    arriving_destination: [0.92, 0.99],
+    completed: [1, 1],
+  }
+
+  const [start, end] = routeProgressRanges[stage]
+  const routeProgress = start + ((end - start) * stageProgress)
+  const routeTrack = buildRouteTrack(pickup, dropoff)
+  const point = interpolateRoute(routeTrack, routeProgress)
+  const routeDistance = activeRide?.distance || calculateDistance(pickup, dropoff)
+  const driverMinutesAway = stage === 'searching'
+    ? Math.max(1, Math.round(7 - (stageProgress * 3)))
+    : stage === 'matched'
+      ? Math.max(1, Math.round(6 - (stageProgress * 2)))
+      : stage === 'en_route'
+        ? Math.max(1, Math.round(4 - (stageProgress * 2)))
+        : stage === 'arrived'
+          ? 0
+          : Math.max(0, Math.round((1 - routeProgress) * 18))
+
+  const etaMinutes = stage === 'completed'
+    ? 0
+    : stage === 'arrived'
+      ? 0
+      : Math.max(1, Math.round(stage === 'trip_in_progress' || stage === 'arriving_destination'
+        ? routeDistance * (1 - routeProgress) * 3.2
+        : driverMinutesAway))
+
+  const distanceRemainingKm = stage === 'completed'
+    ? 0
+    : Math.max(0.1, round(routeDistance * (1 - routeProgress), 1))
+
+  const statusText = (() => {
+    switch (stage) {
+      case 'searching': return 'Searching for drivers...'
+      case 'matched': return `Driver matched`
+      case 'en_route': return `Driver is ${Math.max(1, driverMinutesAway)} min away`
+      case 'arrived': return 'Driver arriving'
+      case 'trip_started': return 'Trip started'
+      case 'trip_in_progress': return 'Trip in progress'
+      case 'arriving_destination': return 'Arriving at destination'
+      case 'completed': return 'Trip completed'
+      default: return 'Ride tracking'
+    }
+  })()
+
+  return {
+    stage,
+    progress: routeProgress,
+    etaMinutes,
+    distanceRemainingKm,
+    driverMinutesAway,
+    currentPoint: { latitude: point.y, longitude: point.x },
+    rotation: point.angle,
+    pulsePickup: stage === 'arrived' || stage === 'trip_started',
+    cameraScale: stage === 'searching' ? 1.02 : stage === 'matched' ? 1.05 : stage === 'en_route' ? 1.08 : stage === 'trip_in_progress' ? 1.12 : 1.06,
+    statusText,
+  }
+}
+
+const playTone = (frequency: number, duration = 180, type: OscillatorType = 'sine', gainValue = 0.03) => {
+  if (typeof window === 'undefined') return
+  const AudioCtor = window.AudioContext || (window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+  if (!AudioCtor) return
+  const context = new AudioCtor()
+  const oscillator = context.createOscillator()
+  const gain = context.createGain()
+  oscillator.type = type
+  oscillator.frequency.value = frequency
+  gain.gain.value = gainValue
+  oscillator.connect(gain)
+  gain.connect(context.destination)
+  oscillator.start()
+  window.setTimeout(() => {
+    oscillator.stop()
+    context.close().catch(() => undefined)
+  }, duration)
 }
 
 const darkFieldStyles = {
@@ -268,98 +544,204 @@ const LocationSearchField: React.FC<{
 const RideMap: React.FC<{
   pickup: RideLocation
   dropoff: RideLocation
-  stage: RideStage
+  stage: VisualRideStage
   activeRide: Ride | null
-}> = ({ pickup, dropoff, stage, activeRide }) => {
-  const driverLocation = getDriverLocation(pickup, dropoff, stage)
+  motionState: MotionState
+}> = ({ pickup, dropoff, stage, activeRide, motionState }) => {
+  const routeTrack = useMemo(() => buildRouteTrack(pickup, dropoff), [pickup, dropoff])
+  const interpolated = useMemo(() => interpolateRoute(routeTrack, motionState.progress), [routeTrack, motionState.progress])
   const nearbyDrivers = stage === 'searching' ? getNearbyDrivers(pickup) : []
-  const routeStart = stage === 'matched' || stage === 'en_route' ? driverLocation : pickup
-  const routeEnd = stage === 'matched' || stage === 'en_route' ? pickup : dropoff
-
-  const points: MapPoint[] = [
-    { ...pickup, id: 'pickup', type: 'pickup', label: 'Pickup' },
-    { ...dropoff, id: 'dropoff', type: 'dropoff', label: 'Dropoff' },
-    ...(stage !== 'searching' ? [{ ...driverLocation, id: 'driver', type: 'driver' as const, label: activeRide?.driver_name || driverProfile.name }] : []),
-    ...nearbyDrivers,
-  ]
-  const allLocations = [...points, routeStart, routeEnd]
-  const routeStartStyle = getPointStyle(routeStart, allLocations)
-  const routeEndStyle = getPointStyle(routeEnd, allLocations)
+  const lineSegments = interpolated.screenPoints
 
   return (
     <Box sx={{
       position: 'relative',
-      minHeight: { xs: 330, md: 520 },
+      minHeight: { xs: 360, md: 560 },
       overflow: 'hidden',
       background:
-        'linear-gradient(135deg, rgba(239, 246, 255, 0.96), rgba(241, 245, 249, 0.94)), repeating-linear-gradient(0deg, transparent 0 42px, rgba(15, 23, 42, 0.06) 42px 43px), repeating-linear-gradient(90deg, transparent 0 42px, rgba(15, 23, 42, 0.06) 42px 43px)',
-      borderRadius: { xs: 0, md: 2 },
+        'radial-gradient(circle at 20% 20%, rgba(34, 197, 94, 0.18), transparent 28%), radial-gradient(circle at 76% 28%, rgba(59, 130, 246, 0.16), transparent 25%), linear-gradient(135deg, rgba(244, 247, 251, 0.98), rgba(232, 240, 250, 0.95))',
+      borderRadius: { xs: 0, md: 3 },
       border: { xs: 'none', md: '1px solid rgba(15, 23, 42, 0.08)' },
       boxShadow: { xs: 'none', md: '0 24px 70px rgba(15, 23, 42, 0.12)' },
     }}>
+      <motion.div
+        animate={{ scale: motionState.cameraScale }}
+        transition={{ type: 'spring', stiffness: 100, damping: 18 }}
+        style={{
+          position: 'absolute',
+          inset: '-6%',
+          transformOrigin: '50% 50%',
+          background:
+            'repeating-linear-gradient(0deg, transparent 0 41px, rgba(15, 23, 42, 0.06) 41px 42px), repeating-linear-gradient(90deg, transparent 0 41px, rgba(15, 23, 42, 0.06) 41px 42px)',
+        }}
+      />
+
       <Box sx={{
         position: 'absolute',
         inset: 0,
         background:
-          'linear-gradient(28deg, transparent 30%, rgba(59, 130, 246, 0.11) 31%, rgba(59, 130, 246, 0.11) 34%, transparent 35%), linear-gradient(118deg, transparent 48%, rgba(17, 24, 39, 0.09) 49%, rgba(17, 24, 39, 0.09) 51%, transparent 52%)',
+          'linear-gradient(28deg, transparent 30%, rgba(148, 163, 184, 0.09) 31%, rgba(148, 163, 184, 0.09) 33%, transparent 34%), linear-gradient(118deg, transparent 46%, rgba(15, 23, 42, 0.08) 47%, rgba(15, 23, 42, 0.08) 49%, transparent 50%)',
       }} />
-      <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible' }}>
+
+      <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+        <defs>
+          <linearGradient id="routeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#111827" />
+            <stop offset="40%" stopColor="#22C55E" />
+            <stop offset="72%" stopColor="#F59E0B" />
+            <stop offset="100%" stopColor="#EF4444" />
+          </linearGradient>
+          <linearGradient id="movingGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#FFFFFF" />
+            <stop offset="100%" stopColor="#93C5FD" />
+          </linearGradient>
+        </defs>
+        {lineSegments.slice(0, -1).map((segment, index) => {
+          const next = lineSegments[index + 1]
+          const trafficColor = index === 0 ? '#94A3B8' : index === 1 ? '#22C55E' : index === 2 ? '#F59E0B' : '#EF4444'
+          const isActive = motionState.progress * (lineSegments.length - 1) >= index
+          return (
+            <line
+              key={`${segment.point.id}-${next.point.id}`}
+              x1={`${segment.x}%`}
+              y1={`${segment.y}%`}
+              x2={`${next.x}%`}
+              y2={`${next.y}%`}
+              stroke={trafficColor}
+              strokeWidth={isActive ? 8 : 6}
+              strokeLinecap="round"
+              strokeDasharray={index === 0 && stage === 'searching' ? '9 10' : '0'}
+              opacity={isActive ? 0.9 : 0.4}
+            />
+          )
+        })}
+
         <line
-          x1={routeStartStyle.left}
-          y1={routeStartStyle.top}
-          x2={routeEndStyle.left}
-          y2={routeEndStyle.top}
-          stroke={stage === 'searching' ? 'rgba(15, 23, 42, 0.18)' : '#111827'}
-          strokeWidth="5"
+          x1={`${lineSegments[0].x}%`}
+          y1={`${lineSegments[0].y}%`}
+          x2={`${interpolated.x}%`}
+          y2={`${interpolated.y}%`}
+          stroke="url(#movingGradient)"
+          strokeWidth="4"
           strokeLinecap="round"
-          strokeDasharray={stage === 'matched' || stage === 'en_route' ? '10 12' : '0'}
-        />
-        <line
-          x1={getPointStyle(pickup, allLocations).left}
-          y1={getPointStyle(pickup, allLocations).top}
-          x2={getPointStyle(dropoff, allLocations).left}
-          y2={getPointStyle(dropoff, allLocations).top}
-          stroke="rgba(34, 197, 94, 0.55)"
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeDasharray={stage === 'trip' || stage === 'completed' ? '0' : '6 10'}
+          strokeDasharray="8 10"
+          opacity="0.82"
         />
       </svg>
 
-      {points.map((point) => {
-        const style = getPointStyle(point, allLocations)
-        const isDriver = point.type === 'driver' || point.type === 'nearby'
+      {nearbyDrivers.map((driver, index) => {
+        const style = pointToScreen({ ...driver, id: driver.id, type: 'mid' }, routeTrack)
+        return (
+          <motion.div
+            key={driver.id}
+            animate={{ y: [0, -6, 0], x: [0, index % 2 === 0 ? 4 : -4, 0], opacity: [0.65, 1, 0.7] }}
+            transition={{ duration: 2.8 + (index * 0.3), repeat: Infinity, ease: 'easeInOut' }}
+            style={{
+              position: 'absolute',
+              left: style.left,
+              top: style.top,
+              transform: 'translate(-50%, -50%)',
+              zIndex: 3,
+            }}
+          >
+            <Box sx={{
+              width: 32,
+              height: 32,
+              borderRadius: '50%',
+              bgcolor: '#FFFFFF',
+              border: '2px solid rgba(15, 23, 42, 0.16)',
+              boxShadow: '0 10px 24px rgba(15, 23, 42, 0.12)',
+              display: 'grid',
+              placeItems: 'center',
+              color: '#111827',
+            }}>
+              <TaxiIcon sx={{ fontSize: 18 }} />
+            </Box>
+          </motion.div>
+        )
+      })}
+
+      <AnimatePresence>
+        {motionState.pulsePickup && (
+          <motion.div
+            key="pickup-pulse"
+            initial={{ opacity: 0.1, scale: 0.85 }}
+            animate={{ opacity: [0.1, 0.35, 0.1], scale: [0.85, 1.15, 0.95] }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+            style={{
+              position: 'absolute',
+              left: pointToScreen(routeTrack[1], routeTrack).left,
+              top: pointToScreen(routeTrack[1], routeTrack).top,
+              width: 120,
+              height: 120,
+              borderRadius: '50%',
+              transform: 'translate(-50%, -50%)',
+              border: '2px solid rgba(34, 197, 94, 0.35)',
+              background: 'radial-gradient(circle, rgba(34, 197, 94, 0.14), transparent 66%)',
+              zIndex: 2,
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      <motion.div
+        animate={{
+          left: `${interpolated.x}%`,
+          top: `${interpolated.y}%`,
+          rotate: `${interpolated.angle}deg`,
+        }}
+        transition={{ type: 'spring', stiffness: 140, damping: 20 }}
+        style={{
+          position: 'absolute',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 6,
+        }}
+      >
+        <Box sx={{
+          width: 54,
+          height: 54,
+          borderRadius: '18px',
+          bgcolor: '#111827',
+          color: '#FFFFFF',
+          display: 'grid',
+          placeItems: 'center',
+          boxShadow: '0 18px 34px rgba(15, 23, 42, 0.28)',
+          border: '3px solid rgba(255,255,255,0.9)',
+        }}>
+          <CarIcon sx={{ fontSize: 28 }} />
+        </Box>
+      </motion.div>
+
+      {routeTrack.map((point) => {
+        const style = pointToScreen(point, routeTrack)
+        const isPickup = point.type === 'pickup'
+        const isDropoff = point.type === 'dropoff'
         return (
           <Box
             key={point.id}
             sx={{
               position: 'absolute',
+              left: style.left,
+              top: style.top,
               transform: 'translate(-50%, -50%)',
-              ...style,
-              zIndex: isDriver ? 4 : 5,
+              zIndex: isPickup || isDropoff ? 5 : 4,
             }}
           >
             <Box sx={{
-              width: point.type === 'nearby' ? 34 : 42,
-              height: point.type === 'nearby' ? 34 : 42,
+              width: isPickup || isDropoff ? 46 : 32,
+              height: isPickup || isDropoff ? 46 : 32,
               borderRadius: '50%',
               display: 'grid',
               placeItems: 'center',
-              color: point.type === 'dropoff' ? '#FFFFFF' : '#111827',
-              background: point.type === 'dropoff'
-                ? '#111827'
-                : point.type === 'driver'
-                  ? '#FFFFFF'
-                  : point.type === 'nearby'
-                    ? '#FFFFFF'
-                    : '#22C55E',
-              border: point.type === 'nearby' ? '2px solid rgba(17, 24, 39, 0.16)' : '3px solid #FFFFFF',
-              boxShadow: '0 12px 28px rgba(15, 23, 42, 0.25)',
-              animation: point.type === 'nearby' ? 'riderPulse 1.8s ease-in-out infinite' : 'none',
+              color: isDropoff ? '#FFFFFF' : '#111827',
+              background: isDropoff ? '#111827' : isPickup ? '#22C55E' : '#FFFFFF',
+              border: '3px solid rgba(255,255,255,0.9)',
+              boxShadow: '0 14px 30px rgba(15, 23, 42, 0.22)',
             }}>
-              {point.type === 'pickup' && <PickupIcon fontSize="small" />}
-              {point.type === 'dropoff' && <FlagIcon fontSize="small" />}
-              {(point.type === 'driver' || point.type === 'nearby') && <CarIcon fontSize="small" />}
+              {isPickup && <PickupIcon fontSize="small" />}
+              {isDropoff && <FlagIcon fontSize="small" />}
+              {point.type === 'mid' && <NavigationIcon sx={{ fontSize: 18 }} />}
             </Box>
           </Box>
         )
@@ -377,25 +759,41 @@ const RideMap: React.FC<{
       }}>
         <Chip
           icon={stage === 'searching' ? <SearchIcon /> : <NavigationIcon />}
-          label={stage === 'searching' ? 'Matching nearby drivers' : 'Live route'}
-          sx={{ bgcolor: '#FFFFFF', color: '#111827', fontWeight: 800, boxShadow: '0 12px 28px rgba(15,23,42,0.12)' }}
+          label={motionState.statusText}
+          sx={{ bgcolor: '#FFFFFF', color: '#111827', fontWeight: 900, boxShadow: '0 12px 28px rgba(15,23,42,0.12)' }}
         />
         <Chip
-          label={`${pickup.latitude.toFixed(4)}, ${pickup.longitude.toFixed(4)}`}
-          sx={{ display: { xs: 'none', sm: 'inline-flex' }, bgcolor: 'rgba(255,255,255,0.92)', color: '#475569', fontWeight: 700 }}
+          label={`${motionState.etaMinutes} min • ${motionState.distanceRemainingKm.toFixed(1)} km left`}
+          sx={{ display: { xs: 'none', sm: 'inline-flex' }, bgcolor: 'rgba(255,255,255,0.94)', color: '#475569', fontWeight: 800 }}
         />
+      </Box>
+
+      <Box sx={{
+        position: 'absolute',
+        right: 16,
+        bottom: 16,
+        bgcolor: 'rgba(255,255,255,0.92)',
+        border: '1px solid rgba(15, 23, 42, 0.08)',
+        borderRadius: 2,
+        px: 1.5,
+        py: 1,
+        boxShadow: '0 12px 28px rgba(15,23,42,0.10)',
+        maxWidth: 240,
+      }}>
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+          <SoundIcon sx={{ fontSize: 17, color: '#16A34A' }} />
+          <Typography sx={{ fontSize: 12, fontWeight: 900, color: '#111827' }}>Live ride updates</Typography>
+        </Stack>
+        <Typography sx={{ fontSize: 12, color: '#475569', lineHeight: 1.35 }}>
+          {activeRide?.driver_name || driverProfile.name} is moving smoothly toward your pickup and route progress updates every second.
+        </Typography>
       </Box>
     </Box>
   )
 }
 
-const TripTimeline: React.FC<{ status: RideStatus }> = ({ status }) => {
-  const normalizedStatus = status === 'driver_accepted'
-    ? 'driver_assigned'
-    : status === 'in_progress'
-      ? 'trip_started'
-      : status
-  const activeIndex = timelineSteps.findIndex((step) => step.key === normalizedStatus)
+const TripTimeline: React.FC<{ stage: VisualRideStage }> = ({ stage }) => {
+  const activeIndex = timelineSteps.findIndex((step) => step.key === stage)
 
   return (
     <Stack spacing={1.15}>
@@ -430,6 +828,14 @@ export const HomePage: React.FC = () => {
   const [rideRequestDialog, setRideRequestDialog] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
   const [locationError, setLocationError] = useState('')
+  const [now, setNow] = useState(Date.now())
+  const [callOpen, setCallOpen] = useState(false)
+  const [callConnected, setCallConnected] = useState(false)
+  const [callDuration, setCallDuration] = useState(0)
+  const [toasts, setToasts] = useState<ToastItem[]>([])
+  const stageRef = useRef<VisualRideStage>('searching')
+  const callHandledRef = useRef(false)
+  const toastSeedRef = useRef(0)
 
   const { data: currentRide } = useCurrentRide()
   const requestRideMutation = useRequestRide()
@@ -438,9 +844,9 @@ export const HomePage: React.FC = () => {
   const activeDropoff = currentRide?.dropoff_location || dropoffLocation
   const rideEstimate = useMemo(() => estimateRide(activePickup, activeDropoff), [activePickup, activeDropoff])
   const requestEstimate = useMemo(() => estimateRide(pickupLocation, dropoffLocation), [pickupLocation, dropoffLocation])
-  const currentStatus = currentRide?.status || 'requested'
-  const stage = getStage(currentRide?.status)
-  const progress = getTimelineProgress(currentStatus)
+  const stage = useMemo(() => getVisualStage(currentRide || null, now), [currentRide, now])
+  const motionState = useMemo(() => getMotionState(currentRide || null, now, activePickup, activeDropoff), [currentRide, now, activePickup, activeDropoff])
+  const progress = getTimelineProgress(stage)
   const stageCopy = getStageCopy(currentRide || null, stage, rideEstimate)
   const fare = currentRide?.actual_fare || currentRide?.estimated_fare || requestEstimate.estimatedFare
   const vehicle = currentRide?.vehicle || (currentRide?.vehicle_details
@@ -449,6 +855,55 @@ export const HomePage: React.FC = () => {
   const plate = currentRide?.license_plate || currentRide?.vehicle_details?.license_plate || driverProfile.plate
   const driverName = currentRide?.driver_name || currentRide?.driver?.name || driverProfile.name
   const driverRating = currentRide?.driver_rating || currentRide?.driver?.rating || driverProfile.rating
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    const previousStage = stageRef.current
+    if (previousStage !== stage) {
+      if (stage === 'matched' && !callHandledRef.current) {
+        setCallOpen(true)
+        playTone(660, 220, 'triangle', 0.025)
+        pushToast('Driver accepted your ride', 'info')
+        callHandledRef.current = true
+      }
+      if (stage === 'en_route') {
+        pushToast(`Driver is ${motionState.driverMinutesAway} minutes away`, 'info')
+      }
+      if (stage === 'arrived') {
+        pushToast('Driver has arrived', 'success')
+        playTone(520, 260, 'sine', 0.03)
+      }
+      if (stage === 'trip_started') {
+        pushToast('Trip started', 'success')
+        playTone(784, 180, 'triangle', 0.03)
+      }
+      if (stage === 'completed') {
+        setCallOpen(false)
+        setCallConnected(false)
+        setCallDuration(0)
+        pushToast('Trip completed', 'success')
+        playTone(988, 240, 'sine', 0.04)
+      }
+    }
+    stageRef.current = stage
+  }, [motionState.driverMinutesAway, stage])
+
+  useEffect(() => {
+    if (!callConnected) return
+    const timer = window.setInterval(() => setCallDuration((seconds) => seconds + 1), 1000)
+    return () => window.clearInterval(timer)
+  }, [callConnected])
+
+  useEffect(() => {
+    callHandledRef.current = false
+    setCallOpen(false)
+    setCallConnected(false)
+    setCallDuration(0)
+  }, [currentRide?.id])
 
   useEffect(() => {
     let cancelled = false
@@ -535,6 +990,61 @@ export const HomePage: React.FC = () => {
     })
   }
 
+  const pushToast = (message: string, severity: ToastItem['severity'] = 'info') => {
+    const id = `toast-${toastSeedRef.current++}`
+    setToasts((items) => [...items, { id, message, severity }])
+    window.setTimeout(() => {
+      setToasts((items) => items.filter((item) => item.id !== id))
+    }, 4200)
+  }
+
+  const handleCallDriver = () => {
+    setCallOpen(true)
+    pushToast('Incoming driver call', 'info')
+    playTone(660, 160, 'triangle', 0.03)
+  }
+
+  const handleAcceptCall = () => {
+    setCallOpen(false)
+    setCallConnected(true)
+    pushToast('Call connected', 'success')
+    playTone(880, 140, 'sine', 0.03)
+  }
+
+  const handleDeclineCall = () => {
+    setCallOpen(false)
+    setCallConnected(false)
+    pushToast('Call declined', 'info')
+    playTone(280, 180, 'sawtooth', 0.02)
+  }
+
+  const handleEndCall = () => {
+    setCallOpen(false)
+    setCallConnected(false)
+    setCallDuration(0)
+    pushToast('Call ended', 'info')
+  }
+
+  const handleMessageDriver = () => {
+    pushToast('Message sent to driver', 'info')
+  }
+
+  const handleShareTrip = async () => {
+    const tripSummary = `${driverName} • ${activePickup.address} to ${activeDropoff.address}`
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'Ride Share', text: tripSummary })
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(tripSummary)
+        pushToast('Trip details copied', 'success')
+        return
+      }
+      pushToast('Trip shared', 'success')
+    } catch {
+      pushToast('Unable to share trip', 'info')
+    }
+  }
+
   return (
     <Box sx={{
       minHeight: '100vh',
@@ -554,7 +1064,7 @@ export const HomePage: React.FC = () => {
         gridTemplateColumns: { xs: '1fr', lg: '1.35fr 0.9fr' },
         gap: { xs: 0, lg: 2.5 },
       }}>
-        <RideMap pickup={activePickup} dropoff={activeDropoff} stage={stage} activeRide={currentRide || null} />
+        <RideMap pickup={activePickup} dropoff={activeDropoff} stage={stage} activeRide={currentRide || null} motionState={motionState} />
 
         <Box sx={{
           p: { xs: 2, md: 0 },
@@ -596,7 +1106,24 @@ export const HomePage: React.FC = () => {
                 }}
               />
 
-              <TripTimeline status={currentStatus} />
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 0.9fr' }, gap: 1.5, mb: 2 }}>
+                <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                  <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 800, mb: 0.5 }}>Live status</Typography>
+                  <Typography sx={{ fontWeight: 900, fontSize: 16 }}>{motionState.statusText}</Typography>
+                  <Typography sx={{ color: '#475569', fontSize: 13, mt: 0.5 }}>
+                    {motionState.etaMinutes > 0 ? `Driver is ${motionState.etaMinutes} min away` : 'Driver is at your location'}
+                  </Typography>
+                </Box>
+                <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                  <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 800, mb: 0.5 }}>Distance remaining</Typography>
+                  <Typography sx={{ fontWeight: 900, fontSize: 16 }}>{motionState.distanceRemainingKm.toFixed(1)} km</Typography>
+                  <Typography sx={{ color: '#475569', fontSize: 13, mt: 0.5 }}>
+                    Progress {Math.round(motionState.progress * 100)}%
+                  </Typography>
+                </Box>
+              </Box>
+
+              <TripTimeline stage={stage} />
             </CardContent>
           </Card>
 
@@ -604,7 +1131,13 @@ export const HomePage: React.FC = () => {
             <Card sx={{ mt: 2, borderRadius: 2, boxShadow: '0 16px 45px rgba(15,23,42,0.10)', border: '1px solid rgba(15,23,42,0.08)' }}>
               <CardContent sx={{ p: 2.5 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                  <Avatar sx={{ width: 56, height: 56, bgcolor: '#0F172A', fontWeight: 900 }}>
+                  <Avatar sx={{
+                    width: 56,
+                    height: 56,
+                    bgcolor: '#0F172A',
+                    fontWeight: 900,
+                    background: 'linear-gradient(135deg, #111827, #334155)',
+                  }}>
                     {driverName.split(' ').map((part) => part[0]).join('').slice(0, 2)}
                   </Avatar>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -616,6 +1149,31 @@ export const HomePage: React.FC = () => {
                     </Stack>
                   </Box>
                   <Chip label={plate} sx={{ bgcolor: '#111827', color: '#FFFFFF', fontWeight: 900, letterSpacing: 0.5 }} />
+                </Box>
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1.25, mt: 2 }}>
+                  <Button onClick={handleCallDriver} variant="outlined" startIcon={<CallIcon />} sx={{ textTransform: 'none', fontWeight: 900, borderRadius: 2 }}>
+                    Call Driver
+                  </Button>
+                  <Button onClick={handleMessageDriver} variant="outlined" startIcon={<MessageIcon />} sx={{ textTransform: 'none', fontWeight: 900, borderRadius: 2 }}>
+                    Message Driver
+                  </Button>
+                  <Button onClick={handleShareTrip} variant="outlined" startIcon={<ShareIcon />} sx={{ textTransform: 'none', fontWeight: 900, borderRadius: 2 }}>
+                    Share Trip
+                  </Button>
+                </Box>
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1.5, mt: 2 }}>
+                  <Box>
+                    <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 800 }}>Trips completed</Typography>
+                    <Typography sx={{ fontWeight: 900 }}>{driverProfile.tripsCompleted.toLocaleString()}</Typography>
+                  </Box>
+                  <Box>
+                    <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 800 }}>ETA</Typography>
+                    <Typography sx={{ fontWeight: 900 }}>{motionState.etaMinutes} min</Typography>
+                  </Box>
+                  <Box>
+                    <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 800 }}>Call</Typography>
+                    <Typography sx={{ fontWeight: 900 }}>{callConnected ? `Connected ${callDuration}s` : 'Ready'}</Typography>
+                  </Box>
                 </Box>
               </CardContent>
             </Card>
@@ -736,6 +1294,155 @@ export const HomePage: React.FC = () => {
           )}
         </Box>
       </Box>
+
+      <Box sx={{
+        position: 'fixed',
+        right: { xs: 16, md: 24 },
+        bottom: { xs: 16, md: 24 },
+        zIndex: 1400,
+      }}>
+        <motion.div
+          animate={{ y: [0, -4, 0], scale: callOpen ? 1.06 : 1 }}
+          transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          <IconButton
+            onClick={handleCallDriver}
+            sx={{
+              width: 58,
+              height: 58,
+              bgcolor: '#111827',
+              color: '#FFFFFF',
+              boxShadow: '0 18px 36px rgba(15, 23, 42, 0.32)',
+              '&:hover': { bgcolor: '#020617' },
+            }}
+          >
+            {callOpen || callConnected ? <PhoneIcon /> : <CallIcon />}
+          </IconButton>
+        </motion.div>
+      </Box>
+
+      <Box sx={{
+        position: 'fixed',
+        top: 16,
+        right: 16,
+        zIndex: 1500,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 1,
+        width: { xs: 'calc(100vw - 32px)', sm: 360 },
+        pointerEvents: 'none',
+      }}>
+        <AnimatePresence>
+          {toasts.slice(-4).map((toast) => (
+            <motion.div
+              key={toast.id}
+              initial={{ opacity: 0, y: -14, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.96 }}
+              transition={{ duration: 0.25 }}
+            >
+              <Alert
+                severity={toast.severity}
+                sx={{
+                  borderRadius: 2,
+                  boxShadow: '0 18px 34px rgba(15,23,42,0.16)',
+                  pointerEvents: 'auto',
+                }}
+                action={
+                  <IconButton size="small" onClick={() => setToasts((items) => items.filter((item) => item.id !== toast.id))}>
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                }
+              >
+                {toast.message}
+              </Alert>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </Box>
+
+      <Dialog
+        open={callOpen}
+        onClose={handleDeclineCall}
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            width: '100%',
+            maxWidth: 420,
+            overflow: 'hidden',
+            bgcolor: '#0B1220',
+            color: '#FFFFFF',
+          },
+        }}
+      >
+        <DialogTitle sx={{ pb: 1.5, fontWeight: 900, color: '#FFFFFF' }}>
+          Demo Driver is calling...
+        </DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <Stack spacing={2} alignItems="center">
+            <Box sx={{
+              width: 112,
+              height: 112,
+              borderRadius: '50%',
+              display: 'grid',
+              placeItems: 'center',
+              background: 'linear-gradient(135deg, #111827, #334155)',
+              border: '3px solid rgba(255,255,255,0.18)',
+              boxShadow: '0 22px 50px rgba(15,23,42,0.35)',
+            }}>
+              <Avatar sx={{ width: 88, height: 88, bgcolor: 'rgba(255,255,255,0.12)', color: '#FFFFFF', fontWeight: 900, fontSize: 28 }}>
+                {driverProfile.avatar}
+              </Avatar>
+            </Box>
+            <Box sx={{ textAlign: 'center' }}>
+              <Typography sx={{ fontSize: 20, fontWeight: 900 }}>{driverName}</Typography>
+              <Stack direction="row" spacing={1} alignItems="center" justifyContent="center" sx={{ color: 'rgba(255,255,255,0.76)', mt: 0.5 }}>
+                <TimerIcon sx={{ fontSize: 18 }} />
+                <Typography sx={{ fontSize: 13, fontWeight: 700 }}>
+                  {callConnected ? `Connected • ${callDuration}s` : 'Incoming voice call'}
+                </Typography>
+              </Stack>
+            </Box>
+            <Box sx={{ width: '100%', p: 1.5, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.06)' }}>
+              <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, fontWeight: 800 }}>Driver details</Typography>
+              <Typography sx={{ fontWeight: 800, mt: 0.5 }}>{vehicle}</Typography>
+              <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 13 }}>
+                Rating ★ {driverRating.toFixed(2)} • {plate}
+              </Typography>
+            </Box>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 2.5, gap: 1.5 }}>
+          <Button
+            fullWidth
+            variant="contained"
+            onClick={handleDeclineCall}
+            startIcon={<CallEndIcon />}
+            sx={{ bgcolor: '#991B1B', fontWeight: 900, borderRadius: 2, textTransform: 'none', '&:hover': { bgcolor: '#7F1D1D' } }}
+          >
+            Decline
+          </Button>
+          <Button
+            fullWidth
+            variant="contained"
+            onClick={handleAcceptCall}
+            startIcon={<CallIcon />}
+            sx={{ bgcolor: '#16A34A', fontWeight: 900, borderRadius: 2, textTransform: 'none', '&:hover': { bgcolor: '#15803D' } }}
+          >
+            Accept
+          </Button>
+          {callConnected && (
+            <Button
+              fullWidth
+              variant="outlined"
+              onClick={handleEndCall}
+              sx={{ color: '#FFFFFF', borderColor: 'rgba(255,255,255,0.24)', fontWeight: 800, borderRadius: 2, textTransform: 'none' }}
+            >
+              End Call
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={rideRequestDialog}

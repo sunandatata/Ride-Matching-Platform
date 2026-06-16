@@ -2,7 +2,7 @@ import React from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
-import { Box } from '@mui/material'
+import { Box, CircularProgress } from '@mui/material'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { BottomNav } from '@/components/BottomNav'
 import { LoginPage } from '@/pages/LoginPage'
@@ -25,7 +25,13 @@ const theme = createTheme({
 const AppRoutes: React.FC = () => {
   const { isAuthenticated, isValidating } = useAuth()
 
-  if (isValidating) return null
+  if (isValidating) {
+    return (
+      <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}>
+        <CircularProgress />
+      </Box>
+    )
+  }
 
   return (
     <Routes>
