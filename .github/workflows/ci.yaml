@@ -32,7 +32,7 @@ jobs:
       uses: actions/setup-java@v4
       with:
         java-version: '21'
-        distribution: 'eclipse-temurin'
+        distribution: 'temurin'
         cache: maven
 
     - name: Build ${{ matrix.service }}
@@ -179,7 +179,7 @@ jobs:
       uses: actions/setup-java@v4
       with:
         java-version: '21'
-        distribution: 'eclipse-temurin'
+        distribution: 'temurin'
         cache: maven
 
     - name: Run integration tests
