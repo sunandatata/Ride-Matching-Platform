@@ -38,11 +38,11 @@
       "document_verified": true,
       "rating": 4.8,
       "created_at": "2026-06-09T18:55:35.165Z",
-      "updated_at": "2026-06-12T22:52:49.599Z",
+      "updated_at": "2026-06-16T04:22:33.249Z",
       "last_location": {
-        "latitude": 33.883451,
-        "longitude": -117.867504,
-        "timestamp": "2026-06-12T22:52:49.533Z"
+        "latitude": 33.883666,
+        "longitude": -117.867355,
+        "timestamp": "2026-06-16T04:22:33.236Z"
       }
     },
     {
@@ -367,6 +367,78 @@
       "actual_fare": 21.21,
       "driver_earning": 18.03,
       "completed_at": "2026-06-09T18:56:06.616Z"
+    },
+    {
+      "id": "ride-1781397444663-07735c6e",
+      "rider_id": "demo-rider-001",
+      "rider_name": "Demo Rider",
+      "status": "completed",
+      "lifecycle": {
+        "requested": "2026-06-14T00:37:24.663Z",
+        "driver_assigned": "2026-06-14T00:37:40.255Z",
+        "driver_accepted": "2026-06-14T00:37:40.255Z",
+        "driver_arriving": "2026-06-14T00:37:40.255Z",
+        "driver_arrived": "2026-06-16T04:21:13.341Z",
+        "trip_started": "2026-06-16T04:21:14.289Z",
+        "in_progress": "2026-06-16T04:21:14.289Z",
+        "completed": "2026-06-16T04:21:15.239Z"
+      },
+      "pickup_location": {
+        "latitude": 33.883597,
+        "longitude": -117.867405,
+        "address": "Current location"
+      },
+      "dropoff_location": {
+        "latitude": 40.7527,
+        "longitude": -73.9772,
+        "address": "Grand Central Terminal, New York, NY"
+      },
+      "distance": 3913.94,
+      "estimated_fare": 11942.32,
+      "eta_seconds": 939540,
+      "created_at": "2026-06-14T00:37:24.663Z",
+      "updated_at": "2026-06-16T04:21:15.239Z",
+      "driver_id": "demo-driver-001",
+      "driver_name": "Demo Driver",
+      "driver_rating": 4.8,
+      "vehicle": "Toyota Prius (Silver)",
+      "license_plate": "ABC-1234",
+      "actual_fare": 11942.32,
+      "driver_earning": 10150.97,
+      "completed_at": "2026-06-16T04:21:15.239Z"
+    },
+    {
+      "id": "ride-1781583616848-c26f362c",
+      "rider_id": "demo-rider-001",
+      "rider_name": "Demo Rider",
+      "status": "driver_arrived",
+      "lifecycle": {
+        "requested": "2026-06-16T04:20:16.848Z",
+        "driver_assigned": "2026-06-16T04:21:31.070Z",
+        "driver_accepted": "2026-06-16T04:21:31.070Z",
+        "driver_arriving": "2026-06-16T04:21:31.070Z",
+        "driver_arrived": "2026-06-16T04:21:35.365Z"
+      },
+      "pickup_location": {
+        "latitude": 33.870822,
+        "longitude": -117.929416,
+        "address": "Fullerton, Orange County, California, United States"
+      },
+      "dropoff_location": {
+        "latitude": 33.769016,
+        "longitude": -118.191604,
+        "address": "Long Beach, Los Angeles County, California, United States"
+      },
+      "distance": 26.74,
+      "estimated_fare": 86.27,
+      "eta_seconds": 6600,
+      "created_at": "2026-06-16T04:20:16.848Z",
+      "updated_at": "2026-06-16T04:21:35.365Z",
+      "driver_id": "demo-driver-001",
+      "driver_name": "Demo Driver",
+      "driver_rating": 4.8,
+      "vehicle": "Toyota Prius (Silver)",
+      "license_plate": "ABC-1234"
     }
   ],
   "sessions": [

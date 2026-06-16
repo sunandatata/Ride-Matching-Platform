@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Avatar,
   Box,
+  Autocomplete,
   Button,
   Card,
   CardContent,
@@ -15,7 +16,6 @@ import {
   Divider,
   IconButton,
   LinearProgress,
-  MenuItem,
   Stack,
   TextField,
   Typography,
@@ -35,20 +35,10 @@ import {
 } from '@mui/icons-material'
 import { useCurrentRide, useRequestRide } from '@/hooks/useRides'
 import { Location as RideLocation, Ride, RideRequest, RideStatus } from '@/types'
+import { locationSearchService } from '@/services/locationSearchService'
 
 type RideStage = 'searching' | 'matched' | 'en_route' | 'arrived' | 'trip' | 'completed'
 type MapPoint = RideLocation & { id: string; type: 'pickup' | 'dropoff' | 'driver' | 'nearby'; label: string }
-
-const locationPresets: RideLocation[] = [
-  { latitude: 40.7527, longitude: -73.9772, address: 'Grand Central Terminal, New York, NY' },
-  { latitude: 40.7580, longitude: -73.9855, address: 'Times Square, New York, NY' },
-  { latitude: 40.7536, longitude: -73.9832, address: 'Bryant Park, New York, NY' },
-  { latitude: 40.7484, longitude: -73.9857, address: 'Empire State Building, New York, NY' },
-  { latitude: 40.7505, longitude: -73.9934, address: 'Penn Station, New York, NY' },
-  { latitude: 40.7605, longitude: -73.9743, address: 'Rockefeller Center, New York, NY' },
-  { latitude: 40.7061, longitude: -74.0086, address: 'Wall Street, New York, NY' },
-  { latitude: 40.7127, longitude: -74.0134, address: 'One World Trade Center, New York, NY' },
-]
 
 const timelineSteps: Array<{ key: RideStatus; label: string }> = [
   { key: 'requested', label: 'Searching' },
@@ -63,7 +53,7 @@ const driverProfile = {
   name: 'Marcus Chen',
   rating: 4.92,
   vehicle: 'Toyota Camry Hybrid',
-  plate: 'NYC-4821',
+  plate: 'RIDE-4821',
   avatar: 'MC',
 }
 
@@ -213,6 +203,66 @@ const darkFieldStyles = {
     '&.Mui-focused fieldset': { borderColor: '#111827', boxShadow: '0 0 0 3px rgba(17, 24, 39, 0.08)' },
   },
   '& .MuiInputLabel-root': { color: '#64748B' },
+}
+
+const LocationSearchField: React.FC<{
+  label: string
+  placeholder: string
+  value: RideLocation
+  inputValue: string
+  options: RideLocation[]
+  loading: boolean
+  onInputChange: (value: string) => void
+  onChange: (value: RideLocation) => void
+}> = ({ label, placeholder, value, inputValue, options, loading, onInputChange, onChange }) => {
+  return (
+    <Autocomplete
+      value={value}
+      inputValue={inputValue}
+      options={options}
+      loading={loading}
+      onInputChange={(_, nextValue) => onInputChange(nextValue)}
+      onChange={(_, nextValue) => {
+        if (nextValue) onChange(nextValue)
+      }}
+      isOptionEqualToValue={(option, current) => (
+        option.latitude === current.latitude
+        && option.longitude === current.longitude
+        && option.address === current.address
+      )}
+      getOptionLabel={(option) => option.address}
+      filterOptions={(availableOptions) => availableOptions}
+      renderInput={(params) => (
+        <TextField
+          {...params}
+          fullWidth
+          label={label}
+          placeholder={placeholder}
+          sx={darkFieldStyles}
+          InputProps={{
+            ...params.InputProps,
+            endAdornment: (
+              <>
+                {loading ? <CircularProgress color="inherit" size={18} sx={{ mr: 1 }} /> : null}
+                {params.InputProps.endAdornment}
+              </>
+            ),
+          }}
+        />
+      )}
+      renderOption={(props, option) => (
+        <li {...props} key={`${option.address}-${option.latitude}-${option.longitude}`}>
+          <Box>
+            <Typography sx={{ fontWeight: 800, color: '#111827' }}>{option.address}</Typography>
+            <Typography sx={{ fontSize: 12, color: '#64748B' }}>
+              {option.latitude.toFixed(4)}, {option.longitude.toFixed(4)}
+            </Typography>
+          </Box>
+        </li>
+      )}
+      noOptionsText="No places found"
+    />
+  )
 }
 
 const RideMap: React.FC<{
@@ -368,8 +418,15 @@ const TripTimeline: React.FC<{ status: RideStatus }> = ({ status }) => {
 }
 
 export const HomePage: React.FC = () => {
-  const [pickupLocation, setPickupLocation] = useState<RideLocation>(locationPresets[0])
-  const [dropoffLocation, setDropoffLocation] = useState<RideLocation>(locationPresets[1])
+  const fallbackLocations = locationSearchService.getFallbackLocations()
+  const [pickupLocation, setPickupLocation] = useState<RideLocation>(fallbackLocations[0])
+  const [dropoffLocation, setDropoffLocation] = useState<RideLocation>(fallbackLocations[1])
+  const [pickupQuery, setPickupQuery] = useState(fallbackLocations[0].address)
+  const [dropoffQuery, setDropoffQuery] = useState(fallbackLocations[1].address)
+  const [pickupSuggestions, setPickupSuggestions] = useState<RideLocation[]>(fallbackLocations)
+  const [dropoffSuggestions, setDropoffSuggestions] = useState<RideLocation[]>(fallbackLocations)
+  const [pickupLoading, setPickupLoading] = useState(false)
+  const [dropoffLoading, setDropoffLoading] = useState(false)
   const [rideRequestDialog, setRideRequestDialog] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
   const [locationError, setLocationError] = useState('')
@@ -393,12 +450,53 @@ export const HomePage: React.FC = () => {
   const driverName = currentRide?.driver_name || currentRide?.driver?.name || driverProfile.name
   const driverRating = currentRide?.driver_rating || currentRide?.driver?.rating || driverProfile.rating
 
-  const selectPreset = (address: string, type: 'pickup' | 'dropoff') => {
-    const nextLocation = locationPresets.find((location) => location.address === address)
-    if (!nextLocation) return
-    if (type === 'pickup') setPickupLocation(nextLocation)
-    else setDropoffLocation(nextLocation)
-  }
+  useEffect(() => {
+    let cancelled = false
+    const query = pickupQuery.trim()
+    const timer = window.setTimeout(async () => {
+      if (!query) {
+        setPickupSuggestions(locationSearchService.getFallbackLocations())
+        setPickupLoading(false)
+        return
+      }
+      setPickupLoading(true)
+      try {
+        const results = await locationSearchService.searchLocations(query)
+        if (!cancelled) setPickupSuggestions(results)
+      } finally {
+        if (!cancelled) setPickupLoading(false)
+      }
+    }, 300)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [pickupQuery])
+
+  useEffect(() => {
+    let cancelled = false
+    const query = dropoffQuery.trim()
+    const timer = window.setTimeout(async () => {
+      if (!query) {
+        setDropoffSuggestions(locationSearchService.getFallbackLocations())
+        setDropoffLoading(false)
+        return
+      }
+      setDropoffLoading(true)
+      try {
+        const results = await locationSearchService.searchLocations(query)
+        if (!cancelled) setDropoffSuggestions(results)
+      } finally {
+        if (!cancelled) setDropoffLoading(false)
+      }
+    }, 300)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [dropoffQuery])
 
   const useCurrentLocation = () => {
     setLocationError('')
@@ -408,11 +506,13 @@ export const HomePage: React.FC = () => {
     }
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setPickupLocation({
+        const nextLocation = {
           latitude: round(position.coords.latitude, 6),
           longitude: round(position.coords.longitude, 6),
           address: 'Current location',
-        })
+        }
+        setPickupLocation(nextLocation)
+        setPickupQuery(nextLocation.address)
       },
       () => setLocationError('Unable to access current location.'),
       { enableHighAccuracy: true, timeout: 8000 }
@@ -551,21 +651,19 @@ export const HomePage: React.FC = () => {
               <Typography sx={{ fontWeight: 900, fontSize: 20, mb: 2 }}>Where to?</Typography>
               <Stack spacing={2}>
                 <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 1 }}>
-                  <TextField
-                    select
-                    fullWidth
+                  <LocationSearchField
                     label="Pickup"
-                    value={pickupLocation.address}
-                    onChange={(event) => selectPreset(event.target.value, 'pickup')}
-                    sx={darkFieldStyles}
-                  >
-                    {[pickupLocation, ...locationPresets.filter((location) => location.address !== pickupLocation.address)]
-                      .map((location) => (
-                        <MenuItem key={location.address} value={location.address}>
-                          {location.address}
-                        </MenuItem>
-                      ))}
-                  </TextField>
+                    placeholder="Search any pickup location"
+                    value={pickupLocation}
+                    inputValue={pickupQuery}
+                    options={pickupSuggestions}
+                    loading={pickupLoading}
+                    onInputChange={setPickupQuery}
+                    onChange={(location) => {
+                      setPickupLocation(location)
+                      setPickupQuery(location.address)
+                    }}
+                  />
                   <IconButton
                     aria-label="Use current location"
                     onClick={useCurrentLocation}
@@ -575,20 +673,19 @@ export const HomePage: React.FC = () => {
                   </IconButton>
                 </Box>
 
-                <TextField
-                  select
-                  fullWidth
+                <LocationSearchField
                   label="Destination"
-                  value={dropoffLocation.address}
-                  onChange={(event) => selectPreset(event.target.value, 'dropoff')}
-                  sx={darkFieldStyles}
-                >
-                  {locationPresets.map((location) => (
-                    <MenuItem key={location.address} value={location.address}>
-                      {location.address}
-                    </MenuItem>
-                  ))}
-                </TextField>
+                  placeholder="Search any destination worldwide"
+                  value={dropoffLocation}
+                  inputValue={dropoffQuery}
+                  options={dropoffSuggestions}
+                  loading={dropoffLoading}
+                  onInputChange={setDropoffQuery}
+                  onChange={(location) => {
+                    setDropoffLocation(location)
+                    setDropoffQuery(location.address)
+                  }}
+                />
               </Stack>
 
               <Box sx={{ mt: 2, p: 2, borderRadius: 2, bgcolor: '#F8FAFC', border: '1px solid #E2E8F0' }}>

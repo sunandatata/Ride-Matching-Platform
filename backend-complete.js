@@ -15,8 +15,8 @@ const ACCESS_TOKEN_TTL_MS = 1000 * 60 * 60 * 8;
 const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 14;
 
 const fallbackLocations = {
-  pickup: { latitude: 40.7128, longitude: -74.0060, address: 'Pickup Location' },
-  dropoff: { latitude: 40.7580, longitude: -73.9855, address: 'Dropoff Location' }
+  pickup: { latitude: 0, longitude: 0, address: 'Unknown pickup location' },
+  dropoff: { latitude: 0, longitude: 0, address: 'Unknown dropoff location' }
 };
 
 const lifecycleOrder = [
@@ -294,19 +294,6 @@ function isFiniteCoordinate(value) {
   return Number.isFinite(number);
 }
 
-function stableHash(value) {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = ((hash * 31) + value.charCodeAt(index)) >>> 0;
-  }
-  return hash;
-}
-
-function coordinateOffset(address, salt) {
-  const hash = stableHash(`${address.toLowerCase()}:${salt}`);
-  return ((hash % 20001) - 10000) / 50000;
-}
-
 function normalizeLocation(location, fallback) {
   const address = normalizeString(location?.address || fallback.address);
   const hasCoordinates = isFiniteCoordinate(location?.latitude) && isFiniteCoordinate(location?.longitude);
@@ -320,8 +307,8 @@ function normalizeLocation(location, fallback) {
   }
 
   return {
-    latitude: round(fallback.latitude + coordinateOffset(address || fallback.address, 'lat'), 6),
-    longitude: round(fallback.longitude + coordinateOffset(address || fallback.address, 'lon'), 6),
+    latitude: round(fallback.latitude, 6),
+    longitude: round(fallback.longitude, 6),
     address: address || fallback.address
   };
 }
